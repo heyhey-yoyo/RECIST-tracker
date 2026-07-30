@@ -1,5 +1,6 @@
 import { baselineTargetSum, sortVisits, targetSumAtVisit } from './recist.js';
 import { daysBetween } from '../utils/format.js';
+import { parseMeasurement } from '../utils/measurement.js';
 
 export function validatePatient(patient) {
   const issues = [];
@@ -12,13 +13,15 @@ export function validatePatient(patient) {
   for (const lesion of targets) {
     const organ = lesion.organ?.trim() || '未填写器官';
     byOrgan.set(organ, (byOrgan.get(organ) || 0) + 1);
-    const value = Number(lesion.baselineMm);
-    if (!Number.isFinite(value) || value <= 0) {
-      issues.push({ level: 'error', message: `靶病灶“${lesion.label}”的基线测量无效。` });
-    } else if (lesion.isLymphNode && value < 15) {
-      issues.push({ level: 'warning', message: `靶淋巴结“${lesion.label}”基线短径小于 15 mm，通常不满足可测量靶病灶标准。` });
-    } else if (!lesion.isLymphNode && value < 10) {
-      issues.push({ level: 'warning', message: `靶病灶“${lesion.label}”基线长径小于 10 mm，通常不满足可测量靶病灶标准。` });
+    const parsed = parseMeasurement(lesion.baselineMm);
+    if (parsed.status !== 'measured') {
+      issues.push({ level: 'error', message: `靶病灶”${lesion.label}”的基线测量无效或未填写。` });
+    } else if (parsed.mm <= 0) {
+      issues.push({ level: 'error', message: `靶病灶”${lesion.label}”的基线测量必须大于 0。` });
+    } else if (lesion.isLymphNode && parsed.mm < 15) {
+      issues.push({ level: 'warning', message: `靶淋巴结”${lesion.label}”基线短径小于 15 mm，通常不满足可测量靶病灶标准。` });
+    } else if (!lesion.isLymphNode && parsed.mm < 10) {
+      issues.push({ level: 'warning', message: `靶病灶”${lesion.label}”基线长径小于 10 mm，通常不满足可测量靶病灶标准。` });
     }
   }
   for (const [organ, count] of byOrgan.entries()) {

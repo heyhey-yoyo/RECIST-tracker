@@ -1,4 +1,5 @@
 import { daysBetween } from '../utils/format.js';
+import { parseMeasurement, allMeasured, sumMeasured } from '../utils/measurement.js';
 
 export function sortVisits(patient) {
   return [...(patient.visits || [])].sort((a, b) => {
@@ -10,24 +11,31 @@ export function sortVisits(patient) {
 
 export function baselineTargetSum(patient) {
   if (!patient.targetLesions?.length) return null;
-  const values = patient.targetLesions.map((lesion) => Number(lesion.baselineMm));
-  if (values.some((value) => !Number.isFinite(value) || value < 0)) return null;
-  return values.reduce((sum, value) => sum + value, 0);
+  const parsed = patient.targetLesions.map((lesion) => parseMeasurement(lesion.baselineMm));
+  return sumMeasured(parsed);
 }
 
 export function targetSumAtVisit(patient, visit) {
   if (!patient.targetLesions?.length) return null;
-  const values = patient.targetLesions.map((lesion) => Number(visit.targetMeasurements?.[lesion.id]));
-  if (values.some((value) => !Number.isFinite(value) || value < 0)) return null;
-  return values.reduce((sum, value) => sum + value, 0);
+  const parsed = patient.targetLesions.map((lesion) =>
+    parseMeasurement(visit.targetMeasurements?.[lesion.id])
+  );
+  return sumMeasured(parsed);
 }
 
+/**
+ * 判断靶病灶是否均已达到 RECIST 消失标准：
+ * - 非淋巴结：测量值显式为 0 mm（确定消失）
+ * - 淋巴结：短径 < 10 mm
+ *
+ * 注意：null/undefined/空字符串（未测量）不等同于消失。
+ */
 function allTargetLesionsResolved(patient, visit) {
   if (!patient.targetLesions?.length) return false;
   return patient.targetLesions.every((lesion) => {
-    const value = Number(visit.targetMeasurements?.[lesion.id]);
-    if (!Number.isFinite(value) || value < 0) return false;
-    return lesion.isLymphNode ? value < 10 : value === 0;
+    const parsed = parseMeasurement(visit.targetMeasurements?.[lesion.id]);
+    if (parsed.status !== 'measured') return false;
+    return lesion.isLymphNode ? parsed.mm < 10 : parsed.mm === 0;
   });
 }
 
@@ -72,6 +80,16 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   }
 
   const absoluteIncrease = currentSum - nadirSum;
+
+  // nadir 为 0（曾达到靶病灶完全消失）后病灶重新出现 → PD
+  // RECIST 1.1: nadir 为 0 时，靶病灶重新出现即构成 PD，不适用 20% 阈值。
+  if (nadirSum === 0 && currentSum > 0) {
+    return {
+      code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+      reason: `靶病灶曾完全消失（最低值 0 mm），当前重新出现（总和 ${currentSum.toFixed(1)} mm），构成疾病进展。`
+    };
+  }
+
   if (nadirSum > 0 && nadirChangePct >= 20 && absoluteIncrease >= 5) {
     return {
       code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,

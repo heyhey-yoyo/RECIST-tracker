@@ -5,6 +5,7 @@ import {
   sortVisits
 } from './recist.js';
 import { daysBetween } from '../utils/format.js';
+import { parseMeasurement, allMeasured, sumMeasured } from '../utils/measurement.js';
 
 function visitIndexMap(visits) {
   return new Map(visits.map((visit, index) => [visit.id, index]));
@@ -12,9 +13,9 @@ function visitIndexMap(visits) {
 
 function lesionResolved(lesion, visit) {
   if (lesion.kind === 'target') {
-    const value = Number(visit.newTargetMeasurements?.[lesion.id]);
-    if (!Number.isFinite(value) || value < 0) return false;
-    return lesion.isLymphNode ? value < 10 : value === 0;
+    const parsed = parseMeasurement(visit.newTargetMeasurements?.[lesion.id]);
+    if (parsed.status !== 'measured') return false;
+    return lesion.isLymphNode ? parsed.mm < 10 : parsed.mm === 0;
   }
   return visit.newNonTargetStatuses?.[lesion.id] === 'absent';
 }
@@ -28,9 +29,11 @@ function newLesionMetrics(patient, visit, visits, index, priorMetrics) {
   });
   const targetLesions = eligible.filter((lesion) => lesion.kind === 'target');
   const nonTargetLesions = eligible.filter((lesion) => lesion.kind === 'nonTarget');
-  const targetValues = targetLesions.map((lesion) => Number(visit.newTargetMeasurements?.[lesion.id]));
-  const targetSum = targetLesions.length && targetValues.every((value) => Number.isFinite(value) && value >= 0)
-    ? targetValues.reduce((sum, value) => sum + value, 0)
+  const targetParsed = targetLesions.map((lesion) =>
+    parseMeasurement(visit.newTargetMeasurements?.[lesion.id])
+  );
+  const targetSum = targetLesions.length && allMeasured(targetParsed)
+    ? sumMeasured(targetParsed)
     : targetLesions.length ? null : null;
   const targetSums = priorMetrics.map((item) => item.newTargetSum).filter((value) => Number.isFinite(value));
   const targetNadir = targetSums.length ? Math.min(...targetSums) : null;
@@ -43,7 +46,7 @@ function newLesionMetrics(patient, visit, visits, index, priorMetrics) {
   const nonTargetStatuses = nonTargetLesions.map((lesion) => visit.newNonTargetStatuses?.[lesion.id]);
   const nonTargetIncreased = nonTargetStatuses.some((status) => status === 'increased');
   const newNotEvaluable =
-    targetLesions.some((lesion) => !Number.isFinite(Number(visit.newTargetMeasurements?.[lesion.id]))) ||
+    targetParsed.some((p) => p.status !== 'measured') ||
     nonTargetStatuses.some((status) => !status || status === 'notEvaluable');
   const newlyDetected = newLesionsFirstDetectedAtVisit(patient, visit);
   const allResolved = eligible.length > 0 && eligible.every((lesion) => lesionResolved(lesion, visit));
@@ -150,6 +153,50 @@ function reasonForIupd(causes, recistResult, metrics) {
   return `达到初始进展标准，暂记为 iUPD，需后续确认。${details.length ? ` ${details.join(' ')}` : ''}`;
 }
 
+/**
+ * P0-3 修复：iUPD 重置条件必须严格，不能仅因"非 PD"就重置。
+ *
+ * 重置需满足全部条件：
+ * 1. 原病灶未达到 PD 且可评价
+ * 2. 未出现新的进展信号（新病灶 PD、新病灶增大、额外新病灶）
+ * 3. 导致 iUPD 的原因已显著改善：
+ *    a. 若因新病灶触发 iUPD，所有触发时的新病灶必须已消退
+ *    b. 若因靶病灶 PD 触发 iUPD，当前靶病灶总和必须较 iUPD 锚点下降 ≥5 mm
+ *    c. 若因非靶病灶 PD 触发 iUPD，非靶病灶必须不再处于明确进展状态
+ */
+function canResetFromIupd({ baseOverall, metrics, pending, recistResult }) {
+  // 基础条件：原病灶非 PD 且可评价
+  if (baseOverall.code === 'PD' || baseOverall.code === 'NE') return false;
+
+  // 基础条件：本次未出现新的进展信号
+  if (metrics.newTargetPD || metrics.newNonTargetIncreased || metrics.newlyDetected.length > 0) return false;
+
+  const basis = new Set(pending.basis);
+
+  // 若 iUPD 因新病灶触发，所有触发时的新病灶必须已消退
+  if (basis.has('newLesion')) {
+    if (!metrics.allResolved) return false;
+  }
+
+  // 若 iUPD 因靶病灶 PD 触发，需靶病灶总和较 iUPD 锚点有实际下降
+  if (basis.has('target')) {
+    const targetDecrease = pending.targetSum != null && recistResult.target.currentSum != null
+      ? pending.targetSum - recistResult.target.currentSum
+      : null;
+    // 靶病灶总和要求至少下降 5 mm 或当前已达到 PR/CR
+    if (targetDecrease != null && targetDecrease < 5 && baseOverall.code !== 'CR' && baseOverall.code !== 'PR') {
+      return false;
+    }
+  }
+
+  // 若 iUPD 因非靶病灶 PD 触发，需非靶病灶不再明确进展
+  if (basis.has('nonTarget')) {
+    if (recistResult.nonTarget.code === 'PD') return false;
+  }
+
+  return true;
+}
+
 export function evaluateIrecistSequence(patient) {
   const visits = sortVisits(patient);
   const recistResults = evaluateRecistSequence(patient);
@@ -192,12 +239,25 @@ export function evaluateIrecistSequence(patient) {
       }
     } else {
       const intervalDays = daysBetween(pending.date, recistResult.visit.date);
-      if (intervalDays != null && (intervalDays < 28 || intervalDays > 56)) {
-        warnings.push(`本次距离 iUPD 为 ${intervalDays} 天，不在通常建议的 4–8 周确认窗口内；请结合方案和缺失访视规则复核。`);
+      const tooEarly = intervalDays != null && intervalDays < 28;
+      const outsideWindow = intervalDays != null && intervalDays > 56;
+
+      if (outsideWindow) {
+        warnings.push(`本次距离 iUPD 为 ${intervalDays} 天，超过通常建议的 4–8 周确认窗口；请结合方案和缺失访视规则复核。`);
       }
 
-      confirmationReasons = confirmProgression({ pending, recistResult, metrics });
-      if (confirmationReasons.length > 0) {
+      // P0-2 修复：不足 4 周（28 天）的扫描默认不能自动确认 iCPD。
+      // iRECIST 要求首次 iUPD 后至少 4 周才能确认，除非满足特殊例外
+      //（因新临床症状提前检查并发现额外新病灶）。当前系统未建模例外条件，
+      // 因此少于 4 周时禁止自动确认，仅保留 iUPD。
+      confirmationReasons = tooEarly ? [] : confirmProgression({ pending, recistResult, metrics });
+
+      if (tooEarly) {
+        code = 'IUPD';
+        reason = `本次距离 iUPD 仅 ${intervalDays} 天，不足 4 周，不能自动确认 iCPD。如需确认需满足特殊例外条件（新临床症状 + 额外新病灶），请人工复核。`;
+        warnings.push(`提前检查（${intervalDays} 天 < 28 天）：自动确认已阻止。若满足 iRECIST 特殊例外条件，请人工判定。`);
+        anchor = pending;
+      } else if (confirmationReasons.length > 0) {
         code = 'ICPD';
         reason = `iUPD 后出现进一步进展，确认 iCPD：${confirmationReasons.join('；')}。`;
         confirmed = true;
@@ -206,9 +266,9 @@ export function evaluateIrecistSequence(patient) {
         code = 'NE';
         reason = 'iUPD 后本次存在无法评价项；未自动确认 iCPD，保留待人工复核。';
         anchor = pending;
-      } else if (!['PD'].includes(baseOverall.code) && !metrics.newTargetPD && !metrics.newNonTargetIncreased && metrics.newlyDetected.length === 0) {
+      } else if (canResetFromIupd({ baseOverall, metrics, pending, recistResult })) {
         code = mapBaseResponseToImmune(baseOverall.code, metrics);
-        reason = `未确认进一步进展，且原病灶达到 ${baseOverall.code}；iUPD 状态重置，判定为 ${code}。`;
+        reason = `未确认进一步进展，且 iUPD 原因已显著改善；iUPD 状态重置，判定为 ${code}。`;
         pending = null;
         anchor = null;
       } else {
