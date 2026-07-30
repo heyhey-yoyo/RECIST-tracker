@@ -182,7 +182,100 @@ test('P0-4: lymph node re-enlargement past 10mm after CR is PD', () => {
   };
   const results = evaluateRecistSequence(patient);
   assert.equal(results[0].target.code, 'CR');
-  // 淋巴结重新超过 10mm，nadir 为 0（V1 淋巴结 8mm < 10mm 视为消退）→ CR 后重新出现 = PD
+  // 淋巴结重新超过 10mm，nadir 为 8（V1 淋巴结 8mm < 10mm 视为消退）→ hadPriorCR 触发 PD
+  assert.equal(results[1].target.code, 'PD');
+});
+
+// 复核修复：靶淋巴结 CR 后重新达到 10mm 边界 → PD
+// 基线 20mm，V1: 8mm (CR)，V2: 10mm → 仅增 2mm 不满足常规 +5mm 阈值
+// 但 hadPriorCR 检查应捕获此边界情况
+test('lymph node at exactly 10mm after CR is PD (nadir > 0 boundary)', () => {
+  const patient = {
+    baselineDate: '2026-01-01',
+    targetLesions: [
+      { id: 't1', label: '腹膜后淋巴结', organ: '淋巴结', isLymphNode: true, baselineMm: 20 }
+    ],
+    nonTargetLesions: [],
+    newLesions: [],
+    visits: [
+      {
+        id: 'v1', label: 'v1', date: '2026-02-01', createdAt: '2026-02-01',
+        targetMeasurements: { t1: 8 },
+        nonTargetStatuses: {},
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      },
+      {
+        id: 'v2', label: 'v2', date: '2026-03-01', createdAt: '2026-03-01',
+        targetMeasurements: { t1: 10 }, // 恰好 10mm，常规 PD 需 +5mm（2<5 不触发）
+        nonTargetStatuses: {},
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      }
+    ]
+  };
+  const results = evaluateRecistSequence(patient);
+  assert.equal(results[0].target.code, 'CR');
+  // V2: nadir=8, current=10, increase=2mm < 5mm → 常规 PD 不触发
+  // 但 hadPriorCR=true 且 allTargetLesionsResolved=false → PD
+  assert.equal(results[1].target.code, 'PD');
+});
+
+// 复核修复：PR 后轻微回升不降为 SD
+test('PR persists after slight increase that does not meet PD', () => {
+  const patient = {
+    baselineDate: '2026-01-01',
+    targetLesions: [
+      { id: 't1', label: '肝 S6', organ: '肝', isLymphNode: false, baselineMm: 100 }
+    ],
+    nonTargetLesions: [],
+    newLesions: [],
+    visits: [
+      {
+        id: 'v1', label: 'v1', date: '2026-02-01', createdAt: '2026-02-01',
+        targetMeasurements: { t1: 69 }, // -31% → PR
+        nonTargetStatuses: {},
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      },
+      {
+        id: 'v2', label: 'v2', date: '2026-03-01', createdAt: '2026-03-01',
+        targetMeasurements: { t1: 72 }, // -28% → 不满足 -30%，但既往 PR 应维持
+        nonTargetStatuses: {},
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      }
+    ]
+  };
+  const results = evaluateRecistSequence(patient);
+  assert.equal(results[0].target.code, 'PR');
+  // 既往曾达 PR 且当前未达 PD → 维持 PR，不降为 SD
+  assert.equal(results[1].target.code, 'PR');
+});
+
+// 复核修复：PR 后真正进展仍应判 PD
+test('PR followed by true PD still triggers progression', () => {
+  const patient = {
+    baselineDate: '2026-01-01',
+    targetLesions: [
+      { id: 't1', label: '肝 S6', organ: '肝', isLymphNode: false, baselineMm: 100 }
+    ],
+    nonTargetLesions: [],
+    newLesions: [],
+    visits: [
+      {
+        id: 'v1', label: 'v1', date: '2026-02-01', createdAt: '2026-02-01',
+        targetMeasurements: { t1: 69 }, // -31% → PR, nadir = 69
+        nonTargetStatuses: {},
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      },
+      {
+        id: 'v2', label: 'v2', date: '2026-03-01', createdAt: '2026-03-01',
+        targetMeasurements: { t1: 88 }, // nadir 69→88: +27.5%, +19mm ≥ 5mm → PD
+        nonTargetStatuses: {},
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      }
+    ]
+  };
+  const results = evaluateRecistSequence(patient);
+  assert.equal(results[0].target.code, 'PR');
+  // 真正进展仍应触发 PD
   assert.equal(results[1].target.code, 'PD');
 });
 

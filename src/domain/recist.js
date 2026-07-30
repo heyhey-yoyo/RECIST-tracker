@@ -90,6 +90,16 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     };
   }
 
+  // 此前曾达到 CR（所有病灶均消退），当前至少一个病灶重新出现 → PD
+  // 覆盖靶淋巴结曾 <10 mm 后重新 ≥10 mm 等 nadirSum > 0 的边界情况。
+  const hadPriorCR = previousVisits.some((v) => allTargetLesionsResolved(patient, v));
+  if (hadPriorCR) {
+    return {
+      code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+      reason: '此前曾达到靶病灶完全缓解，当前至少一个靶病灶重新出现或靶淋巴结重新达到可测量标准（≥10 mm），构成疾病进展。'
+    };
+  }
+
   if (nadirSum > 0 && nadirChangePct >= 20 && absoluteIncrease >= 5) {
     return {
       code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
@@ -101,6 +111,19 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     return {
       code: 'PR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
       reason: `靶病灶直径总和较基线下降 ${Math.abs(baselineChangePct).toFixed(1)}%，达到至少 30% 的下降。`
+    };
+  }
+
+  // PR 持久性：既往曾达到 PR（相对基线下降 ≥30%），当前虽未满足 -30% 阈值，
+  // 但也未达到 PD 标准 → 维持 PR，不因轻微回升（如 -31% → -28%）降为 SD。
+  const hadPriorPR = priorSums.some((sum) => {
+    const pct = ((sum - baselineSum) / baselineSum) * 100;
+    return pct <= -30;
+  });
+  if (hadPriorPR) {
+    return {
+      code: 'PR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+      reason: `既往曾达到部分缓解（相对基线下降 ≥30%），当前未达到进展标准，维持部分缓解评价。`
     };
   }
 
