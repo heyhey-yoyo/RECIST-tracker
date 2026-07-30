@@ -86,8 +86,7 @@ function primaryNav(active) {
   const links = [
     ['patients', '#/patients', '受试者'],
     ['settings', '#/settings', '研究设置'],
-    ['backup', '#/backup', '数据备份'],
-    ['about', '#/about', '关于与规则']
+    ['backup', '#/backup', '数据备份']
   ];
   return `<div class="tool-nav-wrap">
     <div class="tool-nav-inner">
@@ -198,25 +197,6 @@ function renderBackupPage() {
   </div>
   <section class="card danger-zone" style="margin-top:16px"><div class="card-header"><h2 class="card-title">危险操作</h2></div><div class="card-body actions"><button class="btn btn-secondary" data-action="load-demo">载入演示数据</button><button class="btn btn-danger" data-action="reset-all">清空全部本地数据</button></div></section>`;
   return shell(content, 'backup', '数据备份');
-}
-
-function renderAboutPage() {
-  const content = `<div class="page-header"><div><h1 class="page-title">关于与规则边界</h1><p class="page-desc">这是一个离线优先的疗效评估辅助工具，不替代影像科、研究者或独立评审委员会判断。</p></div></div>
-  <div class="grid grid-2">
-    <section class="card"><div class="card-header"><h2 class="card-title">已经实现</h2></div><div class="card-body"><div class="issue-list">
-      <div class="issue issue-info">RECIST 1.1：靶病灶总和、基线变化、最低值变化、CR/PR/SD/PD。</div>
-      <div class="issue issue-info">非靶病灶：消失、存在、明确进展、进一步增加和无法评价。</div>
-      <div class="issue issue-info">iRECIST：iUPD、iCPD、原靶病灶和新发靶病灶的 5 mm 确认、新发非靶病灶增加及额外新病灶。</div>
-      <div class="issue issue-info">规则校验、判定理由、临床稳定性提示和本地审计记录。</div>
-    </div></div></section>
-    <section class="card"><div class="card-header"><h2 class="card-title">必须人工复核</h2></div><div class="card-body"><div class="issue-list">
-      <div class="issue issue-warning">病灶是否真正为新发恶性病灶、是否可测量，以及非靶病灶是否“明确进展”。</div>
-      <div class="issue issue-warning">病灶分裂、融合、局部治疗、骨病灶、囊性病灶及技术性不可测量等复杂影像情形。</div>
-      <div class="issue issue-warning">确认缓解要求、缺失访视、非随机试验规则以及具体研究方案中的修改标准。</div>
-      <div class="issue issue-warning">该版本未做 GxP / 21 CFR Part 11 验证，不应直接作为受监管试验的唯一原始记录。</div>
-    </div></div></section>
-  </div>`;
-  return shell(content, 'about', '关于与规则');
 }
 
 function patientTabs(patient, active) {
@@ -426,7 +406,6 @@ function render() {
   let page;
   if (route.page === 'settings') page = renderSettingsPage();
   else if (route.page === 'backup') page = renderBackupPage();
-  else if (route.page === 'about') page = renderAboutPage();
   else if (route.page === 'patient') page = renderPatientPage(route);
   else page = renderPatientsPage();
   app.innerHTML = `${page}${renderModal()}${ui.toast ? `<div class="toast">${escapeHtml(ui.toast)}</div>` : ''}`;
