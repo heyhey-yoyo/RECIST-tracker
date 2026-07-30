@@ -58,7 +58,7 @@ http://localhost:4173
 
 ## 部署到 Cloudflare Pages
 
-### 通过 GitHub 自动部署
+**通过 GitHub 自动部署**
 
 1. 将项目推送到 GitHub。
 2. 在 Cloudflare Dashboard 中进入 **Workers & Pages**。
@@ -74,7 +74,7 @@ Node.js version: 20 或更高
 
 每次推送后 Cloudflare Pages 会自动构建和部署。
 
-### 直接上传
+**直接上传**
 
 ```bash
 npm run build
