@@ -134,3 +134,15 @@ dist/                   可直接部署的静态产物
 ## License
 
 MIT
+
+---
+
+## AI 维护提醒
+
+> **⚠️ 任何修改此项目的 AI 代理（Claude Code、Cursor、Copilot 等）都必须同步更新本文件与 AGENTS.md。**
+>
+> - 新增功能 → 在 README 中添加用户可理解的说明
+> - 新增/删除文件 → 更新本文和 AGENTS.md 中的文件清单
+> - 修改架构 → 更新 AGENTS.md 的架构说明
+> - 部署方式变更 → 同步更新本文部署章节
+> - 保持 **README 面向人类用户**，**AGENTS.md 面向 AI 代理**，两份文件不可互相替代

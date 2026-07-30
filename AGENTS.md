@@ -132,3 +132,14 @@ The entire UI is server-side-style HTML template strings rendered via `app.inner
 - Manual review is always required for: lesion malignancy determination, unequivocal progression of non-target lesions, lesion splitting/fusion, local therapy, bone/cystic lesions, and protocol-specific modifications.
 - When modifying RECIST/iRECIST rules, always add corresponding test cases.
 - The `dist/` directory is build output but is currently committed for reference. The build script deletes and recreates it on each run.
+
+---
+
+## AI 维护提醒
+
+> **⚠️ 任何修改此项目的 AI 代理（包括未来的你自己）都必须遵守：**
+>
+> - **修改代码后必须同步更新本 AGENTS.md 与 README.md** — 新增文件、架构变更、功能增删、部署方式变更都需要在两份文档中体现
+> - README.md 面向**人类用户**（功能介绍、运行方法、部署步骤），AGENTS.md 面向 **AI 代理**（架构、代码组织、测试策略、开发约定）
+> - 两份文件**不可互相替代**，各有所众
+> - 项目的实际文件结构必须与 AGENTS.md 中列出的文件清单保持一致
