@@ -95,7 +95,8 @@ npx wrangler deploy
 ## 项目结构
 
 ```text
-public/                  HTML 和 Cloudflare 安全响应头
+index.html               HTML 入口和 Cloudflare 安全响应头
+_headers                 Cloudflare 安全响应头
 scripts/build.mjs       无依赖静态构建脚本
 src/app.js              页面、表单和状态管理
 src/domain/recist.js    RECIST 1.1 规则
