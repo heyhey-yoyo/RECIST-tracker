@@ -44,6 +44,7 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     return {
       code: 'NA', currentSum: null, baselineSum: null, nadirSum: null,
       baselineChangePct: null, nadirChangePct: null,
+      reappearedAfterTargetCR: false,
       reason: '基线未登记靶病灶。'
     };
   }
@@ -54,6 +55,7 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     return {
       code: 'NE', currentSum, baselineSum, nadirSum: null,
       baselineChangePct: null, nadirChangePct: null,
+      reappearedAfterTargetCR: false,
       reason: '基线靶病灶测量不完整或总和为 0，无法评价。'
     };
   }
@@ -61,6 +63,7 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     return {
       code: 'NE', currentSum: null, baselineSum, nadirSum: null,
       baselineChangePct: null, nadirChangePct: null,
+      reappearedAfterTargetCR: false,
       reason: '本次随访存在缺失或无效的靶病灶测量，无法评价。'
     };
   }
@@ -72,37 +75,30 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   const baselineChangePct = ((currentSum - baselineSum) / baselineSum) * 100;
   const nadirChangePct = nadirSum > 0 ? ((currentSum - nadirSum) / nadirSum) * 100 : null;
 
+  // 此前曾达到靶病灶 CR，当前至少一个病灶重新出现 → 仅标记，由总体评价层
+  // 结合既往总体疗效是否为 CR 决定是否判 PD。避免靶病灶 CR 但非靶病灶仍存在（总体 PR）
+  // 时错误自动判 PD。
+  const hadPriorTargetCR = previousVisits.some((v) => allTargetLesionsResolved(patient, v));
+  const reappearedAfterTargetCR = hadPriorTargetCR && !allTargetLesionsResolved(patient, visit);
+
   if (allTargetLesionsResolved(patient, visit)) {
     return {
       code: 'CR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+      reappearedAfterTargetCR: false,
       reason: '所有非淋巴结靶病灶均消失，所有靶淋巴结短径均小于 10 mm。'
     };
   }
 
   const absoluteIncrease = currentSum - nadirSum;
-
-  // nadir 为 0（曾达到靶病灶完全消失）后病灶重新出现 → PD
-  // RECIST 1.1: nadir 为 0 时，靶病灶重新出现即构成 PD，不适用 20% 阈值。
-  if (nadirSum === 0 && currentSum > 0) {
-    return {
-      code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
-      reason: `靶病灶曾完全消失（最低值 0 mm），当前重新出现（总和 ${currentSum.toFixed(1)} mm），构成疾病进展。`
-    };
-  }
-
-  // 此前曾达到 CR（所有病灶均消退），当前至少一个病灶重新出现 → PD
-  // 覆盖靶淋巴结曾 <10 mm 后重新 ≥10 mm 等 nadirSum > 0 的边界情况。
-  const hadPriorCR = previousVisits.some((v) => allTargetLesionsResolved(patient, v));
-  if (hadPriorCR) {
-    return {
-      code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
-      reason: '此前曾达到靶病灶完全缓解，当前至少一个靶病灶重新出现或靶淋巴结重新达到可测量标准（≥10 mm），构成疾病进展。'
-    };
-  }
+  // reappearedAfterTargetCR 已在前面计算（hadPriorTargetCR 逻辑），
+  // 同时覆盖 nadirSum === 0 后病灶重新出现的情况。
+  const isNadirZeroReappearance = nadirSum === 0 && currentSum > 0;
+  const effectiveReappeared = reappearedAfterTargetCR || isNadirZeroReappearance;
 
   if (nadirSum > 0 && nadirChangePct >= 20 && absoluteIncrease >= 5) {
     return {
       code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+      reappearedAfterTargetCR: effectiveReappeared,
       reason: `靶病灶直径总和较最低值增加 ${nadirChangePct.toFixed(1)}%，绝对增加 ${absoluteIncrease.toFixed(1)} mm，同时达到 ≥20% 和 ≥5 mm。`
     };
   }
@@ -110,6 +106,7 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   if (baselineChangePct <= -30) {
     return {
       code: 'PR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+      reappearedAfterTargetCR: effectiveReappeared,
       reason: `靶病灶直径总和较基线下降 ${Math.abs(baselineChangePct).toFixed(1)}%，达到至少 30% 的下降。`
     };
   }
@@ -123,12 +120,14 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   if (hadPriorPR) {
     return {
       code: 'PR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+      reappearedAfterTargetCR: effectiveReappeared,
       reason: `既往曾达到部分缓解（相对基线下降 ≥30%），当前未达到进展标准，维持部分缓解评价。`
     };
   }
 
   return {
     code: 'SD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
+    reappearedAfterTargetCR: effectiveReappeared,
     reason: '未达到完全缓解、部分缓解或靶病灶进展标准。'
   };
 }
@@ -163,7 +162,14 @@ export function newLesionsFirstDetectedAtVisit(patient, visit) {
   );
 }
 
-export function evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesion }) {
+export function evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesion, hadPriorOverallCR = false }) {
+  // 既往总体 CR，当前靶病灶重新出现 → PD
+  // 仅当既往总体疗效确实为 CR 时才自动判 PD；若此前仅为靶病灶 CR 而非靶病灶仍存在
+  //（总体 PR），则不触发此分支，改由普通 PD 标准判断。
+  if (hadPriorOverallCR && target.reappearedAfterTargetCR) {
+    return { code: 'PD', reason: '此前曾达到总体完全缓解，当前至少一个靶病灶重新出现或靶淋巴结重新达到可测量标准（≥10 mm），构成疾病进展。' };
+  }
+
   if (hasDefiniteNewLesion || target.code === 'PD' || nonTarget.code === 'PD') {
     return { code: 'PD', reason: hasDefiniteNewLesion ? '存在确定的新发恶性病灶。' : '靶病灶或非靶病灶达到进展标准。' };
   }
@@ -197,6 +203,7 @@ export function evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesio
 export function evaluateRecistSequence(patient) {
   const visits = sortVisits(patient);
   const results = [];
+  let hadPriorOverallCR = false;
   for (let index = 0; index < visits.length; index += 1) {
     const visit = visits[index];
     const previousVisits = visits.slice(0, index);
@@ -207,8 +214,10 @@ export function evaluateRecistSequence(patient) {
     const overall = evaluateOverallResponse({
       target,
       nonTarget,
-      hasDefiniteNewLesion: newLesions.length > 0
+      hasDefiniteNewLesion: newLesions.length > 0,
+      hadPriorOverallCR
     });
+    if (overall.code === 'CR') hadPriorOverallCR = true;
     const intervalFromBaselineDays = daysBetween(patient.baselineDate, visit.date);
     results.push({
       visit,

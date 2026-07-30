@@ -204,6 +204,7 @@ export function evaluateIrecistSequence(patient) {
   const metricsHistory = [];
   let pending = null;
   let confirmed = false;
+  let hadPriorOverallCR = false;
 
   for (let index = 0; index < visits.length; index += 1) {
     const recistResult = recistResults[index];
@@ -212,9 +213,11 @@ export function evaluateIrecistSequence(patient) {
     const baseOverall = evaluateOverallResponse({
       target: recistResult.target,
       nonTarget: recistResult.nonTarget,
-      hasDefiniteNewLesion: false
+      hasDefiniteNewLesion: false,
+      hadPriorOverallCR
     });
     const causes = rawProgressionCauses(recistResult, baseOverall, metrics);
+    if (baseOverall.code === 'CR') hadPriorOverallCR = true;
     const warnings = [];
     let code;
     let reason;

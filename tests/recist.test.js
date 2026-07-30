@@ -150,10 +150,13 @@ test('P0-4: target lesion reappearance after CR is PD', () => {
     ]
   };
   const results2 = evaluateRecistSequence(patient2);
-  // V1: CR (nadir = 0)
-  // V2: lesion 12mm. currentSum=12. nadirSum=0. nadirSum===0 → PD branch triggered.
+  // V1: 靶病灶 CR + 无非靶病灶 → 总体 CR
   assert.equal(results2[0].target.code, 'CR');
-  assert.equal(results2[1].target.code, 'PD');
+  assert.equal(results2[0].overall.code, 'CR');
+  // V2: 靶病灶 12mm (nadir 0), reappearedAfterTargetCR=true
+  // 靶病灶层不自动判 PD，由总体层根据 hadPriorOverallCR=true 判 PD
+  assert.equal(results2[1].target.reappearedAfterTargetCR, true);
+  assert.equal(results2[1].overall.code, 'PD');
 });
 
 // P0-4 修复：淋巴结在 CR 后重新增大超过 10mm 应判 PD
@@ -186,9 +189,9 @@ test('P0-4: lymph node re-enlargement past 10mm after CR is PD', () => {
   assert.equal(results[1].target.code, 'PD');
 });
 
-// 复核修复：靶淋巴结 CR 后重新达到 10mm 边界 → PD
+// 复核修复：靶淋巴结 CR 后重新达到 10mm 边界 → PD（无其他病灶）
 // 基线 20mm，V1: 8mm (CR)，V2: 10mm → 仅增 2mm 不满足常规 +5mm 阈值
-// 但 hadPriorCR 检查应捕获此边界情况
+// 靶病灶层不自动 PD，由总体层根据 hadPriorOverallCR=true 判 PD
 test('lymph node at exactly 10mm after CR is PD (nadir > 0 boundary)', () => {
   const patient = {
     baselineDate: '2026-01-01',
@@ -214,9 +217,82 @@ test('lymph node at exactly 10mm after CR is PD (nadir > 0 boundary)', () => {
   };
   const results = evaluateRecistSequence(patient);
   assert.equal(results[0].target.code, 'CR');
-  // V2: nadir=8, current=10, increase=2mm < 5mm → 常规 PD 不触发
-  // 但 hadPriorCR=true 且 allTargetLesionsResolved=false → PD
-  assert.equal(results[1].target.code, 'PD');
+  assert.equal(results[0].overall.code, 'CR');
+  // V2: 靶病灶层不自动 PD（regular PD 不满足），但 reappearedAfterTargetCR=true
+  // 总体层检测 hadPriorOverallCR=true → PD
+  assert.equal(results[1].target.reappearedAfterTargetCR, true);
+  assert.notEqual(results[1].target.code, 'PD'); // 靶病灶层不自动 PD
+  assert.equal(results[1].overall.code, 'PD');
+});
+
+// 复核修复：靶病灶 0→1mm 但非靶病灶持续存在 → 不自动判 PD
+// 此前总体疗效为 PR（非 CR），靶病灶重新出现不应自动触发 PD
+test('target reappearance after target CR but overall PR does NOT auto-PD (non-target present)', () => {
+  const patient = {
+    baselineDate: '2026-01-01',
+    targetLesions: [
+      { id: 't1', label: '肝 S6', organ: '肝', isLymphNode: false, baselineMm: 20 }
+    ],
+    nonTargetLesions: [{ id: 'n1', label: '腹水', organ: '腹膜' }],
+    newLesions: [],
+    visits: [
+      {
+        id: 'v1', label: 'v1', date: '2026-02-01', createdAt: '2026-02-01',
+        targetMeasurements: { t1: 0 }, // 靶病灶消失
+        nonTargetStatuses: { n1: 'present' }, // 非靶病灶仍存在
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      },
+      {
+        id: 'v2', label: 'v2', date: '2026-03-01', createdAt: '2026-03-01',
+        targetMeasurements: { t1: 1 }, // 靶病灶重新出现
+        nonTargetStatuses: { n1: 'present' },
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      }
+    ]
+  };
+  const results = evaluateRecistSequence(patient);
+  // V1: 靶 CR + 非靶存在 → 总体 PR（非 CR）
+  assert.equal(results[0].target.code, 'CR');
+  assert.equal(results[0].overall.code, 'PR');
+  // V2: reappearedAfterTargetCR=true，但 hadPriorOverallCR=false
+  // → 靶病灶层不自动 PD，总体层也不自动 PD
+  assert.equal(results[1].target.reappearedAfterTargetCR, true);
+  assert.notEqual(results[1].overall.code, 'PD');
+});
+
+// 复核修复：靶淋巴结 8→10mm 但非靶病灶持续存在 → 不自动判 PD
+// 此前总体疗效为 PR，淋巴结重新达到 10mm 不满足常规 +5mm 阈值
+test('lymph node 8→10mm after target CR with non-target present does NOT auto-PD', () => {
+  const patient = {
+    baselineDate: '2026-01-01',
+    targetLesions: [
+      { id: 't1', label: '腹膜后淋巴结', organ: '淋巴结', isLymphNode: true, baselineMm: 20 }
+    ],
+    nonTargetLesions: [{ id: 'n1', label: '腹水', organ: '腹膜' }],
+    newLesions: [],
+    visits: [
+      {
+        id: 'v1', label: 'v1', date: '2026-02-01', createdAt: '2026-02-01',
+        targetMeasurements: { t1: 8 }, // 淋巴结 < 10mm → 靶 CR
+        nonTargetStatuses: { n1: 'present' }, // 非靶仍存在
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      },
+      {
+        id: 'v2', label: 'v2', date: '2026-03-01', createdAt: '2026-03-01',
+        targetMeasurements: { t1: 10 }, // 淋巴结 10mm（+2mm，不满足 +5mm）
+        nonTargetStatuses: { n1: 'present' },
+        newTargetMeasurements: {}, newNonTargetStatuses: {}, clinicalStable: true
+      }
+    ]
+  };
+  const results = evaluateRecistSequence(patient);
+  // V1: 靶 CR + 非靶存在 → 总体 PR
+  assert.equal(results[0].target.code, 'CR');
+  assert.equal(results[0].overall.code, 'PR');
+  // V2: 靶病灶 reappearedAfterTargetCR=true，但 hadPriorOverallCR=false
+  // 常规 PD 不满足（+2mm < 5mm）→ 靶 = PR，总体 ≠ PD
+  assert.equal(results[1].target.reappearedAfterTargetCR, true);
+  assert.notEqual(results[1].overall.code, 'PD');
 });
 
 // 复核修复：PR 后轻微回升不降为 SD
