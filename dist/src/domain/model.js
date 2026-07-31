@@ -125,3 +125,39 @@ export function normalizeState(raw) {
 export function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
+
+/**
+ * RECIST 1.1 器官计数规则：成对器官（肺、肾、肾上腺、卵巢、睾丸、乳房）左右
+ * 各算一个器官，全部淋巴结站算一个器官。用户输入的是自由文本，计数前先归组，
+ * 否则"左肺 2 个 + 右肺 2 个"可绕过每器官最多 2 个的校验。
+ */
+const ORGAN_GROUP_ALIASES = new Map([
+  ['肺', '肺'], ['左肺', '肺'], ['右肺', '肺'],
+  ['lung', '肺'], ['left lung', '肺'], ['right lung', '肺'],
+  ['肾', '肾'], ['左肾', '肾'], ['右肾', '肾'],
+  ['kidney', '肾'], ['left kidney', '肾'], ['right kidney', '肾'],
+  ['肾上腺', '肾上腺'], ['左肾上腺', '肾上腺'], ['右肾上腺', '肾上腺'],
+  ['adrenal', '肾上腺'], ['left adrenal', '肾上腺'], ['right adrenal', '肾上腺'],
+  ['卵巢', '卵巢'], ['左卵巢', '卵巢'], ['右卵巢', '卵巢'],
+  ['ovary', '卵巢'], ['left ovary', '卵巢'], ['right ovary', '卵巢'],
+  ['睾丸', '睾丸'], ['左睾丸', '睾丸'], ['右睾丸', '睾丸'],
+  ['testis', '睾丸'], ['left testis', '睾丸'], ['right testis', '睾丸'],
+  ['testicle', '睾丸'], ['left testicle', '睾丸'], ['right testicle', '睾丸'],
+  ['乳房', '乳房'], ['左乳房', '乳房'], ['右乳房', '乳房'], ['左乳', '乳房'], ['右乳', '乳房'],
+  ['breast', '乳房'], ['left breast', '乳房'], ['right breast', '乳房'],
+  ['淋巴结', '淋巴结'], ['颈淋巴结', '淋巴结'], ['颈部淋巴结', '淋巴结'],
+  ['纵隔淋巴结', '淋巴结'], ['腋下淋巴结', '淋巴结'], ['腋窝淋巴结', '淋巴结'],
+  ['腹股沟淋巴结', '淋巴结'], ['腹膜后淋巴结', '淋巴结'], ['盆腔淋巴结', '淋巴结'],
+  ['lymph node', '淋巴结'], ['lymph nodes', '淋巴结'],
+  ['cervical lymph node', '淋巴结'], ['cervical lymph nodes', '淋巴结'],
+  ['mediastinal lymph node', '淋巴结'], ['mediastinal lymph nodes', '淋巴结'],
+  ['axillary lymph node', '淋巴结'], ['axillary lymph nodes', '淋巴结'],
+  ['inguinal lymph node', '淋巴结'], ['inguinal lymph nodes', '淋巴结'],
+  ['retroperitoneal lymph node', '淋巴结'], ['retroperitoneal lymph nodes', '淋巴结'],
+  ['pelvic lymph node', '淋巴结'], ['pelvic lymph nodes', '淋巴结']
+]);
+
+export function organGroup(organ) {
+  const key = String(organ || '').trim().toLowerCase();
+  return ORGAN_GROUP_ALIASES.get(key) || key || '未填写器官';
+}

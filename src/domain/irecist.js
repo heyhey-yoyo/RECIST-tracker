@@ -1,6 +1,6 @@
 import { evaluateOverallResponse, evaluateVisitRecist, sortVisits } from './recist.js';
 import { daysBetween } from '../utils/format.js';
-import { parseMeasurement, allMeasured, sumMeasured } from '../utils/measurement.js';
+import { parseMeasurement, allMeasured, sumMeasured, toTenths } from '../utils/measurement.js';
 
 function visitIndexMap(visits) {
   return new Map(visits.map((visit, index) => [visit.id, index]));
@@ -58,8 +58,11 @@ function newLesionMetrics(patient, visit, stateVisits, allVisits, priorMetrics) 
   const targetPercentIncrease = targetSum != null && targetNadir != null && targetNadir > 0
     ? (targetAbsoluteIncrease / targetNadir) * 100
     : targetNadir === 0 && targetSum != null ? Infinity : null;
-  const targetPD = targetAbsoluteIncrease != null && targetAbsoluteIncrease >= 5 &&
-    (targetNadir === 0 || targetPercentIncrease >= 20);
+  // 阈值判断基于 0.1 mm 整数交叉相乘，避免浮点误差在精确边界（+20%、+5 mm）误判
+  const targetPD = targetSum != null && targetNadir != null
+    ? toTenths(targetSum) - toTenths(targetNadir) >= 50 &&
+      (toTenths(targetNadir) === 0 || toTenths(targetSum) * 5 >= toTenths(targetNadir) * 6)
+    : false;
 
   const nonTargetStatuses = nonTargetLesions.map(
     (lesion) => visit.newNonTargetStatuses?.[lesion.id]
@@ -133,7 +136,7 @@ function confirmProgression({ pending, recistResult, metrics }) {
     basis.has('target') &&
     Number.isFinite(recistResult.target.currentSum) &&
     Number.isFinite(pending.targetSum) &&
-    recistResult.target.currentSum - pending.targetSum >= 5
+    toTenths(recistResult.target.currentSum) - toTenths(pending.targetSum) >= 50
   ) {
     confirmations.push(`原靶病灶总和较 iUPD 进一步增加 ${(recistResult.target.currentSum - pending.targetSum).toFixed(1)} mm（≥5 mm）`);
   }
@@ -149,7 +152,7 @@ function confirmProgression({ pending, recistResult, metrics }) {
     if (
       Number.isFinite(metrics.newTargetSum) &&
       Number.isFinite(pending.newTargetSum) &&
-      metrics.newTargetSum - pending.newTargetSum >= 5
+      toTenths(metrics.newTargetSum) - toTenths(pending.newTargetSum) >= 50
     ) {
       confirmations.push(`新发靶病灶总和较 iUPD 进一步增加 ${(metrics.newTargetSum - pending.newTargetSum).toFixed(1)} mm（≥5 mm）`);
     }
@@ -217,7 +220,7 @@ function canResetFromIupd({ baseOverall, metrics, pending, recistResult }) {
   const targetImproved =
     Number.isFinite(recistResult.target.currentSum) &&
     Number.isFinite(pending.targetSum) &&
-    recistResult.target.currentSum < pending.targetSum;
+    toTenths(recistResult.target.currentSum) < toTenths(pending.targetSum);
   return currentRank === anchorRank && targetImproved;
 }
 
@@ -277,9 +280,9 @@ export function evaluateIrecistSequence(patient) {
         anchor = pending;
       } else if (baseOverall.code === 'NE' || metrics.newNotEvaluable) {
         code = 'NE';
-        reason = baseOverall.code === 'NE'
+        reason = (baseOverall.code === 'NE'
           ? baseOverall.reason
-          : '新发病灶存在缺失评价，无法完成 iRECIST 判定。';
+          : '新发病灶存在缺失评价，无法完成 iRECIST 判定。') + '该时间点不进入后续最低值/参考序列。';
       } else {
         code = mapBaseResponseToImmune(baseOverall.code, metrics);
         reason = `未见未确认或确认进展；依据当前 RECIST 1.1 病灶组合判定为 ${code}。`;
@@ -298,7 +301,7 @@ export function evaluateIrecistSequence(patient) {
         anchor = pending;
       } else if (baseOverall.code === 'NE' || metrics.newNotEvaluable) {
         code = 'NE';
-        reason = 'iUPD 后本次存在无法评价项；未自动确认 iCPD，保留待人工复核。';
+        reason = 'iUPD 后本次存在无法评价项；未自动确认 iCPD，保留待人工复核。该时间点不进入后续最低值/参考序列。';
         anchor = pending;
       } else if (canResetFromIupd({ baseOverall, metrics, pending, recistResult })) {
         code = mapBaseResponseToImmune(baseOverall.code, metrics);
@@ -330,7 +333,9 @@ export function evaluateIrecistSequence(patient) {
       newLesionMetrics: metrics
     });
 
-    if (!tooEarly) {
+    // NE 时间点无法评价，不进入后续最低值/参考序列：避免其数值在后续
+    // 访视中被当作新的 nadir，把本可重置为 iPR 的病例误判为 iCPD。
+    if (!tooEarly && code !== 'NE') {
       committedVisits.push(visit);
       metricsHistory.push(metrics);
       if (code === 'ICR') hadPriorOverallCR = true;

@@ -53,3 +53,12 @@ export function sumMeasured(parsedList) {
   if (!allMeasured(parsedList)) return null;
   return parsedList.reduce((sum, item) => sum + item.mm, 0);
 }
+
+/**
+ * 将毫米值舍入到 0.1 mm 并转为整数（十分之一毫米）。
+ * 阈值判断统一基于该整数交叉相乘，避免 IEEE-754 浮点误差在精确边界
+ * （恰为 -30%、+20%、+5 mm）把 PR/PD 误判成 SD。
+ */
+export function toTenths(value) {
+  return Math.round(value * 10);
+}

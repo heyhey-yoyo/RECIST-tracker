@@ -127,3 +127,47 @@ test('base CR with unresolved new lesion does not count as prior overall iCR', (
   assert.equal(results[0].irecist.code, 'IUPD');
   assert.notEqual(results[1].baseOverall.reason.includes('此前曾达到总体完全缓解'), true);
 });
+
+test('NE timepoint after iUPD does not enter nadir series (no false iCPD)', () => {
+  // iUPD（新病灶）→ NE（新病灶漏测，原靶 50）→ 原靶 61 + 新病灶稳定：
+  // 若 NE 的 50 mm 进入最低值，61 mm 会构成"新类别 PD"误判为 iCPD；
+  // 忽略 NE 后应以基线 100 为参考，原靶为 PR，可重置为 iPR。
+  const patient = makePatient({
+    newLesions: [newTarget('nl1', 'v1')],
+    visits: [
+      makeVisit({ id: 'v1', date: '2026-02-01', target: 100, newTargetMeasurements: { nl1: 10 } }),
+      makeVisit({ id: 'v2', date: '2026-03-08', target: 50, newTargetMeasurements: {} }),
+      makeVisit({ id: 'v3', date: '2026-04-05', target: 61, newTargetMeasurements: { nl1: 10 } })
+    ]
+  });
+  const results = evaluateIrecistSequence(patient);
+  assert.deepEqual(results.map((item) => item.irecist.code), ['IUPD', 'NE', 'IPR']);
+  assert.equal(results[2].target.nadirSum, 100);
+  assert.ok(results[1].irecist.reason.includes('不进入后续最低值'));
+});
+
+test('new target sum exact +5.0 mm boundary confirms iCPD', () => {
+  // 3.2 → 8.2 恰为 +5.0 mm（浮点差值为 4.999999999999999，原先漏判为继续 iUPD）
+  const patient = makePatient({
+    newLesions: [newTarget('nl1', 'v1')],
+    visits: [
+      makeVisit({ id: 'v1', date: '2026-02-01', target: 100, newTargetMeasurements: { nl1: 3.2 } }),
+      makeVisit({ id: 'v2', date: '2026-03-08', target: 100, newTargetMeasurements: { nl1: 8.2 } })
+    ]
+  });
+  const results = evaluateIrecistSequence(patient);
+  assert.deepEqual(results.map((item) => item.irecist.code), ['IUPD', 'ICPD']);
+});
+
+test('new target sum exact +20% boundary (25.5 → 30.6) confirms iCPD', () => {
+  // 25.5 → 30.6 恰为 +20% 与 +5.1 mm（浮点百分比为 19.999999999999996，原先漏判）
+  const patient = makePatient({
+    newLesions: [newTarget('nl1', 'v1')],
+    visits: [
+      makeVisit({ id: 'v1', date: '2026-02-01', target: 100, newTargetMeasurements: { nl1: 25.5 } }),
+      makeVisit({ id: 'v2', date: '2026-03-08', target: 100, newTargetMeasurements: { nl1: 30.6 } })
+    ]
+  });
+  const results = evaluateIrecistSequence(patient);
+  assert.deepEqual(results.map((item) => item.irecist.code), ['IUPD', 'ICPD']);
+});

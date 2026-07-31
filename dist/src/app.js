@@ -6,9 +6,17 @@ import {
   createPatient,
   createVisit,
   nowIso,
-  clone
+  clone,
+  organGroup
 } from './domain/model.js';
-import { evaluateRecistSequence, bestRecistTimepoint, baselineTargetSum, sortVisits } from './domain/recist.js';
+import {
+  evaluateRecistSequence,
+  bestRecistTimepoint,
+  baselineTargetSum,
+  sortVisits,
+  newLesionsTrackableAtVisit,
+  pruneNewLesionTimeTravelKeys
+} from './domain/recist.js';
 import { evaluateIrecistSequence, bestIrecistTimepoint } from './domain/irecist.js';
 import { validatePatient } from './domain/validation.js';
 import {
@@ -365,15 +373,11 @@ function renderVisitModal(modal) {
   const value = visit || createVisit({ label: `第 ${patient.visits.length + 1} 次随访`, date: '' });
   const targetRows = patient.targetLesions.map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">基线 ${formatNumber(Number(lesion.baselineMm))} mm · ${lesion.isLymphNode ? '短径' : '最长径'}</div></div><input class="input" name="target__${escapeHtml(lesion.id)}" type="number" min="0" step="0.1" value="${escapeHtml(value.targetMeasurements?.[lesion.id] ?? '')}" placeholder="mm"></div>`).join('');
   const ntRows = patient.nonTargetLesions.map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">${escapeHtml(lesion.organ)}</div></div><select name="nt__${escapeHtml(lesion.id)}"><option value="">请选择</option>${Object.entries(NON_TARGET_STATUS_LABELS).map(([key,label]) => option(key,label,value.nonTargetStatuses?.[lesion.id])).join('')}</select></div>`).join('');
-  const orderedVisits = sortVisits(patient);
-  const currentVisitIndex = visit ? orderedVisits.findIndex((item) => item.id === visit.id) : Number.POSITIVE_INFINITY;
-  const visitIndexes = new Map(orderedVisits.map((item, index) => [item.id, index]));
-  const trackableNewLesions = patient.newLesions.filter((lesion) => {
-    const detectedIndex = visitIndexes.get(lesion.firstDetectedVisitId);
-    return !visit || (Number.isInteger(detectedIndex) && detectedIndex <= currentVisitIndex);
-  });
-  const newTargetRows = trackableNewLesions.filter((lesion) => lesion.kind === 'target').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发靶病灶 · ${escapeHtml(lesion.organ)}</div></div><input class="input" name="newtarget__${escapeHtml(lesion.id)}" type="number" min="0" step="0.1" value="${escapeHtml(value.newTargetMeasurements?.[lesion.id] ?? '')}" placeholder="mm"></div>`).join('');
-  const newNtRows = trackableNewLesions.filter((lesion) => lesion.kind === 'nonTarget').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发非靶病灶 · ${escapeHtml(lesion.organ)}</div></div><select name="newnt__${escapeHtml(lesion.id)}"><option value="">请选择</option>${Object.entries(NEW_NON_TARGET_STATUS_LABELS).map(([key,label]) => option(key,label,value.newNonTargetStatuses?.[lesion.id])).join('')}</select></div>`).join('');
+  // 仅渲染该随访时刻已经出现的新发病灶；新建随访按其日期在序列中的预期位置判断，
+  // 避免把"首次发现之前"的测量/状态写入随访（写入后 schema 会拒绝整份数据）
+  const visibleNewLesions = newLesionsTrackableAtVisit(patient, value);
+  const newTargetRows = visibleNewLesions.filter((lesion) => lesion.kind === 'target').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发靶病灶 · ${escapeHtml(lesion.organ)}</div></div><input class="input" name="newtarget__${escapeHtml(lesion.id)}" type="number" min="0" step="0.1" value="${escapeHtml(value.newTargetMeasurements?.[lesion.id] ?? '')}" placeholder="mm"></div>`).join('');
+  const newNtRows = visibleNewLesions.filter((lesion) => lesion.kind === 'nonTarget').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发非靶病灶 · ${escapeHtml(lesion.organ)}</div></div><select name="newnt__${escapeHtml(lesion.id)}"><option value="">请选择</option>${Object.entries(NEW_NON_TARGET_STATUS_LABELS).map(([key,label]) => option(key,label,value.newNonTargetStatuses?.[lesion.id])).join('')}</select></div>`).join('');
   return modalFrame(visit ? '编辑随访' : '新增随访', `<form data-form="visit-form">
     <input type="hidden" name="patientId" value="${escapeHtml(patient.id)}"><input type="hidden" name="visitId" value="${escapeHtml(visit?.id || '')}">
     <div class="form-grid"><div class="field"><label>随访名称 *</label><input class="input" name="label" value="${escapeHtml(value.label)}" required></div><div class="field"><label>影像日期 *</label><input class="input" name="date" type="date" value="${escapeHtml(value.date)}" required></div><div class="field field-full"><label class="checkbox"><input type="checkbox" name="clinicalStable" ${value.clinicalStable !== false ? 'checked' : ''}>患者临床稳定</label><div class="help">该项不改变影像时间点评价，但会影响 iUPD 后继续治疗的提示。</div></div></div>
@@ -657,11 +661,25 @@ app.addEventListener('submit', (event) => {
       visit.targetMeasurements[lesion.id] = raw === '' ? null : Number(raw);
     }
     for (const lesion of patient.nonTargetLesions) visit.nonTargetStatuses[lesion.id] = String(data.get(`nt__${lesion.id}`) || '');
+    // 只写该随访时间点可见的新发病灶；不可见的（首次发现晚于本次，或随访日期被改早）
+    // 必须删除残留键，否则导出/本地数据会被 schema 拒绝导致无法恢复
+    const trackableIds = new Set(newLesionsTrackableAtVisit(patient, visit).map((lesion) => lesion.id));
     for (const lesion of patient.newLesions.filter((item) => item.kind === 'target')) {
+      if (!trackableIds.has(lesion.id)) {
+        delete visit.newTargetMeasurements[lesion.id];
+        continue;
+      }
       const raw = String(data.get(`newtarget__${lesion.id}`) ?? '').trim();
       visit.newTargetMeasurements[lesion.id] = raw === '' ? null : Number(raw);
     }
-    for (const lesion of patient.newLesions.filter((item) => item.kind === 'nonTarget')) visit.newNonTargetStatuses[lesion.id] = String(data.get(`newnt__${lesion.id}`) || '');
+    for (const lesion of patient.newLesions.filter((item) => item.kind === 'nonTarget')) {
+      if (!trackableIds.has(lesion.id)) {
+        delete visit.newNonTargetStatuses[lesion.id];
+        continue;
+      }
+      visit.newNonTargetStatuses[lesion.id] = String(data.get(`newnt__${lesion.id}`) || '');
+    }
+    pruneNewLesionTimeTravelKeys(patient);
     if (!existing) patient.visits.push(visit);
     touchPatient(patient);
     if (!logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'visit', entityId: visit.id, patientId: patient.id, summary: `${existing ? '更新' : '新增'}随访 ${visit.label}`, before, after: visit })) return;
@@ -678,7 +696,8 @@ app.addEventListener('submit', (event) => {
     const otherNewTargets = patient.newLesions.filter((item) => item.id !== lesionId && item.kind === 'target' && item.definite !== false);
     if (kind === 'target' && data.get('definite') === 'on') {
       if (!existing && otherNewTargets.length >= 5) return alert('确定的新发靶病灶最多 5 个。');
-      if (otherNewTargets.filter((item) => item.organ.trim() === organ).length >= 2) return alert(`器官“${organ}”最多记录 2 个新发靶病灶。`);
+      const organCap = organGroup(organ);
+      if (otherNewTargets.filter((item) => organGroup(item.organ) === organCap).length >= 2) return alert(`器官“${organCap}”最多记录 2 个新发靶病灶（左右成对器官与全部淋巴结站各计为一个器官）。`);
     }
     const next = {
       id: existing?.id || createId('newlesion'),
@@ -691,6 +710,8 @@ app.addEventListener('submit', (event) => {
     const before = existing ? clone(existing) : null;
     if (existing && existing.kind !== kind) removeMeasurementReferences(patient, existing.id, existing.kind === 'target' ? 'newTarget' : 'newNonTarget');
     if (existing) Object.assign(existing, next); else patient.newLesions.push(next);
+    // 首次发现随访变更后清理更早随访中的残留测量/状态，防止生成时间穿越数据
+    pruneNewLesionTimeTravelKeys(patient);
     const firstVisit = patient.visits.find((visit) => visit.id === next.firstDetectedVisitId);
     if (firstVisit) {
       if (kind === 'target') {

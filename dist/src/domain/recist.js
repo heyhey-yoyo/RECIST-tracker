@@ -1,6 +1,6 @@
 import { NON_TARGET_STATUSES } from './model.js';
 import { daysBetween } from '../utils/format.js';
-import { parseMeasurement, sumMeasured } from '../utils/measurement.js';
+import { parseMeasurement, sumMeasured, toTenths } from '../utils/measurement.js';
 
 export function sortVisits(patient) {
   return [...(patient.visits || [])].sort((a, b) => {
@@ -66,8 +66,14 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     .map((item) => targetSumAtVisit(patient, item))
     .filter((value) => Number.isFinite(value));
   const nadirSum = Math.min(baselineSum, ...priorSums);
-  const baselineChangePct = ((currentSum - baselineSum) / baselineSum) * 100;
-  const nadirChangePct = nadirSum > 0 ? ((currentSum - nadirSum) / nadirSum) * 100 : null;
+
+  // 阈值判断基于 0.1 mm 整数（tenths）交叉相乘，避免 IEEE-754 浮点误差
+  // 在精确边界（恰为 -30%、+20%、+5 mm）把 PR/PD 误判成 SD。
+  const baselineT = toTenths(baselineSum);
+  const currentT = toTenths(currentSum);
+  const nadirT = nadirSum > 0 ? toTenths(nadirSum) : 0;
+  const baselineChangePct = ((currentT - baselineT) / baselineT) * 100;
+  const nadirChangePct = nadirT > 0 ? ((currentT - nadirT) / nadirT) * 100 : null;
 
   const hadPriorTargetCR = previousVisits.some((v) => allTargetLesionsResolved(patient, v));
   const reappearedAfterTargetCR = hadPriorTargetCR && !allTargetLesionsResolved(patient, visit);
@@ -79,22 +85,19 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   }
 
   const absoluteIncrease = currentSum - nadirSum;
-  const isNadirZeroReappearance = nadirSum === 0 && currentSum > 0;
+  const isNadirZeroReappearance = nadirT === 0 && currentT > 0;
   const effectiveReappeared = reappearedAfterTargetCR || isNadirZeroReappearance;
   const measured = { currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct, reappearedAfterTargetCR: effectiveReappeared };
 
-  if (nadirSum > 0 && nadirChangePct >= 20 && absoluteIncrease >= 5) {
+  if (nadirT > 0 && currentT * 5 >= nadirT * 6 && currentT - nadirT >= 50) {
     return targetResult('PD', `靶病灶直径总和较最低值增加 ${nadirChangePct.toFixed(1)}%，绝对增加 ${absoluteIncrease.toFixed(1)} mm，同时达到 ≥20% 和 ≥5 mm。`, measured);
   }
 
-  if (baselineChangePct <= -30) {
+  if (currentT * 10 <= baselineT * 7) {
     return targetResult('PR', `靶病灶直径总和较基线下降 ${Math.abs(baselineChangePct).toFixed(1)}%，达到至少 30% 的下降。`, measured);
   }
 
-  const hadPriorPR = priorSums.some((sum) => {
-    const pct = ((sum - baselineSum) / baselineSum) * 100;
-    return pct <= -30;
-  });
+  const hadPriorPR = priorSums.some((sum) => toTenths(sum) * 10 <= baselineT * 7);
   if (hadPriorPR) {
     return targetResult('PR', '既往曾达到部分缓解（相对基线下降 ≥30%），当前未达到进展标准，维持部分缓解评价。', measured);
   }
@@ -243,4 +246,52 @@ export function bestRecistTimepoint(results) {
     if (result.overall.code === 'PD') break;
   }
   return best;
+}
+
+/**
+ * 返回某随访时间点"可见"的新发病灶：首次发现随访按 (日期, createdAt) 排序后不晚于该随访。
+ * visit 可以尚未加入 patient.visits（新建随访），此时按其日期推算预期插入位置。
+ * 界面渲染与保存共用，防止把"首次发现之前"的测量/状态写入随访（写入后 schema 会在
+ * 载入/导入时拒绝整份数据，导致本地数据不可恢复）。
+ */
+export function newLesionsTrackableAtVisit(patient, visit) {
+  const ordered = sortVisits(patient);
+  const indexOf = new Map(ordered.map((item, index) => [item.id, index]));
+  const existingIndex = ordered.findIndex((item) => item.id === visit.id);
+  if (existingIndex >= 0) {
+    return (patient.newLesions || []).filter((lesion) => {
+      const detectedIndex = indexOf.get(lesion.firstDetectedVisitId);
+      return Number.isInteger(detectedIndex) && detectedIndex <= existingIndex;
+    });
+  }
+  // 新建随访：插入位置会把它之后既有随访的索引整体 +1，
+  // 因此可见条件变为"首次发现严格早于插入位置"。
+  let insertedAt = ordered.findIndex((item) => {
+    const dateCompare = String(item.date || '').localeCompare(String(visit.date || ''));
+    if (dateCompare !== 0) return dateCompare > 0;
+    return String(item.createdAt || '').localeCompare(String(visit.createdAt || '')) > 0;
+  });
+  if (insertedAt < 0) insertedAt = ordered.length;
+  return (patient.newLesions || []).filter((lesion) => {
+    const detectedIndex = indexOf.get(lesion.firstDetectedVisitId);
+    return Number.isInteger(detectedIndex) && detectedIndex < insertedAt;
+  });
+}
+
+/**
+ * 删除早于首次发现随访的残留测量/状态键。
+ * 首次发现随访被改晚、随访日期重排等操作会遗留此类"时间穿越"键，
+ * 不清理则导出/本地数据会被 schema 拒绝。幂等，可在每次保存后调用。
+ */
+export function pruneNewLesionTimeTravelKeys(patient) {
+  const ordered = sortVisits(patient);
+  const indexOf = new Map(ordered.map((item, index) => [item.id, index]));
+  for (const lesion of patient.newLesions || []) {
+    const firstIndex = indexOf.get(lesion.firstDetectedVisitId);
+    if (!Number.isInteger(firstIndex)) continue;
+    for (const visit of ordered.slice(0, firstIndex)) {
+      delete visit.newTargetMeasurements?.[lesion.id];
+      delete visit.newNonTargetStatuses?.[lesion.id];
+    }
+  }
 }
