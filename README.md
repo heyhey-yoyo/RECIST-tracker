@@ -18,7 +18,9 @@
 - 4–8 周确认窗口提示和临床稳定性提示
 - 自动判定理由与数据质量警告
 - 本地审计记录
-- JSON 完整备份与恢复
+- JSON 完整备份与恢复，导入时自动校验数据结构与引用完整性
+- 存储容量监控与明文存储风险提示
+- 导入安全校验：拒绝畸形、恶意或引用不完整的备份
 - 响应式桌面与移动端界面
 - 不包含图片、Excel、表格或 PDF 导出
 
@@ -102,8 +104,14 @@ src/app.js              页面、表单和状态管理
 src/domain/recist.js    RECIST 1.1 规则
 src/domain/irecist.js   iRECIST 顺序状态机
 src/domain/validation.js 数据质量校验
-src/storage.js          localStorage、审计和 JSON 备份
-tests/                  Node 内置测试运行器测试
+src/domain/schema.js    导入数据递归白名单校验
+src/domain/model.js     数据模型与工厂函数
+src/utils/format.js     日期/数字格式化与 HTML 转义
+src/utils/measurement.js 严格测量值解析
+src/storage.js          localStorage、审计、容量监控与 JSON 备份
+src/demo.js             内置演示数据
+test-utils/fixtures.js  测试夹具工厂函数
+tests/                  Node 内置测试运行器测试（25 项）
 dist/                   可直接部署的静态产物
 ```
 

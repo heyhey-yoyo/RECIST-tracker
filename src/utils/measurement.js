@@ -2,9 +2,9 @@
  * RECIST 1.1 / iRECIST 测量值解析工具。
  *
  * 核心约束：
- * - null / undefined / "" 均视为"未填写"，不是 0 mm
- * - Number(null) === 0 和 Number("") === 0 是 JavaScript 最常见的隐式转换陷阱
- * - 只有显式传入有效非负数值才返回 measured 状态
+ * - null / undefined / 空字符串（含纯空白）均视为“未填写”，不是 0 mm
+ * - 只接受有限的非负 number，或格式明确的十进制数字字符串
+ * - 布尔值、数组、对象和隐式可转换值一律视为无效
  */
 
 export const MEASUREMENT_STATUS = Object.freeze({
@@ -13,6 +13,8 @@ export const MEASUREMENT_STATUS = Object.freeze({
   INVALID: 'invalid'
 });
 
+const DECIMAL_PATTERN = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+
 /**
  * 解析单个测量值，返回结构化结果。
  *
@@ -20,19 +22,27 @@ export const MEASUREMENT_STATUS = Object.freeze({
  * @returns {{ status: 'measured', mm: number } | { status: 'missing' | 'invalid' }}
  */
 export function parseMeasurement(value) {
-  // null / undefined / 空字符串 → 未填写
-  if (value === null || value === undefined || value === '') {
+  if (value === null || value === undefined) {
     return { status: MEASUREMENT_STATUS.MISSING };
   }
 
-  const mm = Number(value);
-
-  // NaN / Infinity / 负数 → 无效
-  if (!Number.isFinite(mm) || mm < 0) {
-    return { status: MEASUREMENT_STATUS.INVALID };
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) {
+      return { status: MEASUREMENT_STATUS.INVALID };
+    }
+    return { status: MEASUREMENT_STATUS.MEASURED, mm: value };
   }
 
-  return { status: MEASUREMENT_STATUS.MEASURED, mm };
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return { status: MEASUREMENT_STATUS.MISSING };
+    if (!DECIMAL_PATTERN.test(trimmed)) return { status: MEASUREMENT_STATUS.INVALID };
+    const mm = Number(trimmed);
+    if (!Number.isFinite(mm) || mm < 0) return { status: MEASUREMENT_STATUS.INVALID };
+    return { status: MEASUREMENT_STATUS.MEASURED, mm };
+  }
+
+  return { status: MEASUREMENT_STATUS.INVALID };
 }
 
 /**
@@ -51,31 +61,18 @@ export function parseMeasurementMap(map, lesions) {
   });
 }
 
-/**
- * 检查解析结果列表中是否全部为有效测量值。
- */
 export function allMeasured(parsedList) {
   return parsedList.every((item) => item.status === MEASUREMENT_STATUS.MEASURED);
 }
 
-/**
- * 检查解析结果列表中是否有缺失值。
- */
 export function hasMissing(parsedList) {
   return parsedList.some((item) => item.status === MEASUREMENT_STATUS.MISSING);
 }
 
-/**
- * 检查解析结果列表中是否有无效值。
- */
 export function hasInvalid(parsedList) {
   return parsedList.some((item) => item.status === MEASUREMENT_STATUS.INVALID);
 }
 
-/**
- * 从解析结果列表中提取有效数值的和。
- * 如有任何非 measured 项，返回 null。
- */
 export function sumMeasured(parsedList) {
   if (!allMeasured(parsedList)) return null;
   return parsedList.reduce((sum, item) => sum + item.mm, 0);

@@ -1,5 +1,13 @@
 import { daysBetween } from '../utils/format.js';
-import { parseMeasurement, allMeasured, sumMeasured } from '../utils/measurement.js';
+import { parseMeasurement, sumMeasured } from '../utils/measurement.js';
+
+const NON_TARGET_STATUSES = new Set([
+  'absent',
+  'present',
+  'unequivocalProgression',
+  'furtherIncrease',
+  'notEvaluable'
+]);
 
 export function sortVisits(patient) {
   return [...(patient.visits || [])].sort((a, b) => {
@@ -27,8 +35,6 @@ export function targetSumAtVisit(patient, visit) {
  * 判断靶病灶是否均已达到 RECIST 消失标准：
  * - 非淋巴结：测量值显式为 0 mm（确定消失）
  * - 淋巴结：短径 < 10 mm
- *
- * 注意：null/undefined/空字符串（未测量）不等同于消失。
  */
 function allTargetLesionsResolved(patient, visit) {
   if (!patient.targetLesions?.length) return false;
@@ -75,9 +81,6 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   const baselineChangePct = ((currentSum - baselineSum) / baselineSum) * 100;
   const nadirChangePct = nadirSum > 0 ? ((currentSum - nadirSum) / nadirSum) * 100 : null;
 
-  // 此前曾达到靶病灶 CR，当前至少一个病灶重新出现 → 仅标记，由总体评价层
-  // 结合既往总体疗效是否为 CR 决定是否判 PD。避免靶病灶 CR 但非靶病灶仍存在（总体 PR）
-  // 时错误自动判 PD。
   const hadPriorTargetCR = previousVisits.some((v) => allTargetLesionsResolved(patient, v));
   const reappearedAfterTargetCR = hadPriorTargetCR && !allTargetLesionsResolved(patient, visit);
 
@@ -90,8 +93,6 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   }
 
   const absoluteIncrease = currentSum - nadirSum;
-  // reappearedAfterTargetCR 已在前面计算（hadPriorTargetCR 逻辑），
-  // 同时覆盖 nadirSum === 0 后病灶重新出现的情况。
   const isNadirZeroReappearance = nadirSum === 0 && currentSum > 0;
   const effectiveReappeared = reappearedAfterTargetCR || isNadirZeroReappearance;
 
@@ -111,8 +112,6 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     };
   }
 
-  // PR 持久性：既往曾达到 PR（相对基线下降 ≥30%），当前虽未满足 -30% 阈值，
-  // 但也未达到 PD 标准 → 维持 PR，不因轻微回升（如 -31% → -28%）降为 SD。
   const hadPriorPR = priorSums.some((sum) => {
     const pct = ((sum - baselineSum) / baselineSum) * 100;
     return pct <= -30;
@@ -121,7 +120,7 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     return {
       code: 'PR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
       reappearedAfterTargetCR: effectiveReappeared,
-      reason: `既往曾达到部分缓解（相对基线下降 ≥30%），当前未达到进展标准，维持部分缓解评价。`
+      reason: '既往曾达到部分缓解（相对基线下降 ≥30%），当前未达到进展标准，维持部分缓解评价。'
     };
   }
 
@@ -140,8 +139,8 @@ export function evaluateNonTargetLesions(patient, visit) {
   if (statuses.some((status) => status === 'unequivocalProgression' || status === 'furtherIncrease')) {
     return { code: 'PD', reason: '至少一个非靶病灶被判定为明确进展或进一步增加。' };
   }
-  if (statuses.some((status) => !status || status === 'notEvaluable')) {
-    return { code: 'NE', reason: '至少一个非靶病灶缺失评价或无法评价。' };
+  if (statuses.some((status) => !NON_TARGET_STATUSES.has(status) || status === 'notEvaluable')) {
+    return { code: 'NE', reason: '至少一个非靶病灶缺失、无法评价或状态值无效。' };
   }
   if (statuses.every((status) => status === 'absent')) {
     return { code: 'CR', reason: '所有非靶病灶均已消失。' };
@@ -153,7 +152,9 @@ export function definiteNewLesionsByVisit(patient, visit, sortedVisits = sortVis
   const index = sortedVisits.findIndex((item) => item.id === visit.id);
   if (index < 0) return [];
   const eligibleVisitIds = new Set(sortedVisits.slice(0, index + 1).map((item) => item.id));
-  return (patient.newLesions || []).filter((lesion) => lesion.definite !== false && eligibleVisitIds.has(lesion.firstDetectedVisitId));
+  return (patient.newLesions || []).filter(
+    (lesion) => lesion.definite !== false && eligibleVisitIds.has(lesion.firstDetectedVisitId)
+  );
 }
 
 export function newLesionsFirstDetectedAtVisit(patient, visit) {
@@ -162,19 +163,23 @@ export function newLesionsFirstDetectedAtVisit(patient, visit) {
   );
 }
 
+/**
+ * RECIST 1.1 Table 1/2 的时间点总体评价矩阵。
+ * 非靶病灶“未全部评价”并不会自动把可由靶病灶确定的 PR/SD 降为 NE。
+ */
 export function evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesion, hadPriorOverallCR = false }) {
-  // 既往总体 CR，当前靶病灶重新出现 → PD
-  // 仅当既往总体疗效确实为 CR 时才自动判 PD；若此前仅为靶病灶 CR 而非靶病灶仍存在
-  //（总体 PR），则不触发此分支，改由普通 PD 标准判断。
   if (hadPriorOverallCR && target.reappearedAfterTargetCR) {
-    return { code: 'PD', reason: '此前曾达到总体完全缓解，当前至少一个靶病灶重新出现或靶淋巴结重新达到可测量标准（≥10 mm），构成疾病进展。' };
+    return {
+      code: 'PD',
+      reason: '此前曾达到总体完全缓解，当前至少一个靶病灶重新出现或靶淋巴结重新达到可测量标准（≥10 mm），构成疾病进展。'
+    };
   }
 
   if (hasDefiniteNewLesion || target.code === 'PD' || nonTarget.code === 'PD') {
-    return { code: 'PD', reason: hasDefiniteNewLesion ? '存在确定的新发恶性病灶。' : '靶病灶或非靶病灶达到进展标准。' };
-  }
-  if (target.code === 'NE' || nonTarget.code === 'NE') {
-    return { code: 'NE', reason: '靶病灶或非靶病灶存在无法评价项。' };
+    return {
+      code: 'PD',
+      reason: hasDefiniteNewLesion ? '存在确定的新发恶性病灶。' : '靶病灶或非靶病灶达到进展标准。'
+    };
   }
 
   if (target.code === 'NA') {
@@ -182,21 +187,39 @@ export function evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesio
     if (nonTarget.code === 'NON_CR_NON_PD') {
       return { code: 'NON_CR_NON_PD', reason: '仅有非靶病灶，仍存在但没有明确进展。' };
     }
-    return { code: 'NE', reason: '没有可用于总体评价的基线病灶。' };
+    return { code: 'NE', reason: '仅有非靶病灶，但本次未全部评价或没有可用于总体评价的病灶。' };
   }
 
-  if (target.code === 'CR' && (nonTarget.code === 'CR' || nonTarget.code === 'NA')) {
-    return { code: 'CR', reason: '靶病灶完全缓解，非靶病灶亦全部消失或不适用，且无新发病灶。' };
+  if (target.code === 'NE') {
+    return { code: 'NE', reason: '靶病灶未全部评价，无法确定总体疗效。' };
   }
-  if (
-    (target.code === 'CR' && nonTarget.code === 'NON_CR_NON_PD') ||
-    (target.code === 'PR' && ['CR', 'NON_CR_NON_PD', 'NA'].includes(nonTarget.code))
-  ) {
-    return { code: 'PR', reason: '靶病灶达到部分缓解，且非靶病灶没有进展；或靶病灶完全缓解但非靶病灶仍存在。' };
+
+  if (target.code === 'CR') {
+    if (nonTarget.code === 'CR' || nonTarget.code === 'NA') {
+      return { code: 'CR', reason: '靶病灶完全缓解，非靶病灶亦全部消失或不适用，且无新发病灶。' };
+    }
+    if (nonTarget.code === 'NON_CR_NON_PD' || nonTarget.code === 'NE') {
+      return {
+        code: 'PR',
+        reason: '靶病灶完全缓解，但非靶病灶仍存在或未全部评价；按 RECIST 1.1 时间点矩阵总体为 PR。'
+      };
+    }
   }
-  if (target.code === 'SD' && ['CR', 'NON_CR_NON_PD', 'NA'].includes(nonTarget.code)) {
-    return { code: 'SD', reason: '靶病灶稳定，非靶病灶没有进展，且无新发病灶。' };
+
+  if (target.code === 'PR' && ['CR', 'NON_CR_NON_PD', 'NA', 'NE'].includes(nonTarget.code)) {
+    return {
+      code: 'PR',
+      reason: '靶病灶达到部分缓解，非靶病灶未见明确进展；按 RECIST 1.1 时间点矩阵总体为 PR。'
+    };
   }
+
+  if (target.code === 'SD' && ['CR', 'NON_CR_NON_PD', 'NA', 'NE'].includes(nonTarget.code)) {
+    return {
+      code: 'SD',
+      reason: '靶病灶稳定，非靶病灶未见明确进展；按 RECIST 1.1 时间点矩阵总体为 SD。'
+    };
+  }
+
   return { code: 'NE', reason: '现有组合无法形成可评价的总体疗效。' };
 }
 

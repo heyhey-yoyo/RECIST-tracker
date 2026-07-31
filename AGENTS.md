@@ -23,21 +23,32 @@ scripts/build.mjs       零依赖静态构建脚本（复制 public/ + src/ → 
 src/
   app.js                全部 UI：路由（hash-based）、表单、模态框、事件处理、渲染
   styles.css            单文件 CSS，无预处理器或框架
-  storage.js            localStorage 读写、审计日志、JSON 备份/恢复
+  storage.js            localStorage 读写、审计日志、JSON 备份/恢复、
+                        容量监控、写入异常回滚
   demo.js               演示数据工厂（胃癌免疫治疗示例）
   domain/
     model.js            数据模型：常量、工厂函数（createPatient、createVisit）、
                         状态规范化、clone 辅助函数
     recist.js           RECIST 1.1 规则：靶病灶评估、非靶病灶评估、总体疗效、
                         序列评估、最佳时间点
-    irecist.js          iRECIST 状态机：iUPD 检测、确认逻辑、重置规则、最佳时间点
+    irecist.js          iRECIST 状态机：iUPD 检测、确认逻辑、重置规则、
+                        提前扫描隔离（＜28 天不进入状态机）
     validation.js       数据质量检查（病灶数量、器官限制、测量有效性）
+    schema.js           导入/加载数据递归白名单校验：ID 格式、枚举、引用完整性、
+                        XSS 防护、类型约束
   utils/
     format.js           HTML 转义、日期/数字/百分比格式化（zh-CN locale）、
                         daysBetween、responseClass（颜色编码）
+    measurement.js      严格测量值解析：拒绝布尔、数组、指数、带单位字符串；
+                        null/空白视为缺失，区分于 0 mm
+test-utils/
+  fixtures.js           测试夹具工厂函数（makePatient、makeVisit、makeState）
 tests/
-  recist.test.js        Node 内置测试：RECIST 1.1 靶/非靶/总体疗效规则
-  irecist.test.js       Node 内置测试：iRECIST 状态机
+  recist.test.js        Node 内置测试：RECIST 1.1 矩阵、靶/非靶/总体疗效边界
+  irecist.test.js       Node 内置测试：iRECIST 状态机、提前扫描、窗口、重置
+  measurement.test.js   Node 内置测试：严格解析、类型拒绝、0 vs 空值
+  schema.test.js         Node 内置测试：schema 校验、引用、XSS、重复 ID
+  storage.test.js        Node 内置测试：存储容量、配额异常、损坏数据、XSS 导入
   validation.test.js    Node 内置测试：数据验证检查
 docs/
   DATA_MODEL.md         完整数据结构参考
@@ -61,8 +72,10 @@ state = {
 ```
 
 - **持久化**：`loadState()` / `saveState()` 读写 `localStorage`，键为 `recist-tracker-state-v1`。
+- **加载时校验**：`loadState()` 调用 `validateAndNormalizeState()`（`schema.js`）进行递归白名单校验，拒绝恶意/畸形数据，返回空状态而不崩溃。
+- **保存时保护**：`saveState()` 捕获配额异常并回滚内存状态到上次成功保存的快照。
+- **容量监控**：序列化数据 ≥4 MiB 时 UI 显示警告；导出页面显示当前数据大小。
 - **审计**：每次变更调用 `appendAudit()`，记录 `{ action, entityType, entityId, patientId, summary, before, after }`。最多 2000 条。
-- **状态规范化**：`normalizeState()`（`model.js`）确保向后兼容——加载后务必调用。
 
 ### 路由
 
@@ -130,6 +143,8 @@ state = {
 - 所有数据保留在浏览器中。无后端、无身份验证、无多用户支持。
 - 应用明确排除：影像查看、Excel/PDF 导出、打印布局、多中心协作。
 - 以下情况始终需要人工审核：病灶良恶性判断、非靶病灶的明确进展、病灶分裂/融合、局部治疗、骨骼/囊性病灶、以及方案特定修改。
+- 导入数据经过 `schema.js` 递归白名单校验：ID 必须字母开头、仅含字母数字下划线连字符；状态值必须在已知枚举内；病灶引用完整性校验；未知字段静默丢弃。
+- ID 在置入 HTML 属性前统一经过 `escapeHtml()` 转义，防止属性注入型 XSS。
 - 修改 RECIST/iRECIST 规则时，务必添加对应的测试用例。
 - `dist/` 目录为构建输出，当前提交至仓库仅供参考。构建脚本每次运行会删除并重建。
 

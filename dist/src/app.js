@@ -11,7 +11,16 @@ import {
 import { evaluateRecistSequence, bestRecistTimepoint, baselineTargetSum, sortVisits } from './domain/recist.js';
 import { evaluateIrecistSequence, bestIrecistTimepoint } from './domain/irecist.js';
 import { validatePatient } from './domain/validation.js';
-import { loadState, saveState, clearState, appendAudit, exportBackup, importBackup } from './storage.js';
+import {
+  loadState,
+  saveState,
+  clearState,
+  appendAudit,
+  exportBackup,
+  importBackup,
+  getLastLoadWarning,
+  serializedStateSize
+} from './storage.js';
 import { createDemoState } from './demo.js';
 import {
   escapeHtml,
@@ -24,11 +33,25 @@ import {
 
 const app = document.querySelector('#app');
 let state = loadState();
-let ui = { modal: null, toast: null };
+let lastPersistedState = clone(state);
+let ui = { modal: null, toast: null, storageWarning: getLastLoadWarning() || null };
 let toastTimer = null;
 
 function persist() {
-  saveState(state);
+  try {
+    const result = saveState(state);
+    lastPersistedState = clone(state);
+    ui.storageWarning = result.nearCapacity
+      ? '本地数据已接近常见浏览器存储上限，请立即导出备份并减少审计快照。'
+      : null;
+    return true;
+  } catch (error) {
+    state = clone(lastPersistedState);
+    ui.modal = null;
+    alert(`${error.message}\n本次未保存的改动已回滚到上一次成功保存的状态。`);
+    render();
+    return false;
+  }
 }
 
 function showToast(message) {
@@ -102,6 +125,9 @@ function primaryNav(active) {
 }
 
 function shell(content, active) {
+  const storageWarning = ui.storageWarning
+    ? `<div class="issue issue-warning" role="alert"><span>⚠</span><span>${escapeHtml(ui.storageWarning)}</span></div>`
+    : '';
   return `<div class="app-shell">
     <header class="site-header">
       <div class="site-header-inner">
@@ -117,7 +143,7 @@ function shell(content, active) {
     </header>
     ${primaryNav(active)}
     <main class="main">
-      <div class="content">${content}</div>
+      <div class="content">${storageWarning}${content}</div>
     </main>
   </div>`;
 }
@@ -150,9 +176,9 @@ function renderPatientsPage() {
       <div class="patient-result">
         ${summary.code ? responseChip(summary.code) : '<span class="badge">尚无评价</span>'}
         <div class="actions">
-          <button class="btn btn-secondary btn-small" data-action="open-patient" data-id="${patient.id}">打开</button>
-          <button class="btn btn-ghost btn-small" data-action="edit-patient" data-id="${patient.id}">编辑</button>
-          <button class="btn btn-ghost btn-small" data-action="delete-patient" data-id="${patient.id}">删除</button>
+          <button class="btn btn-secondary btn-small" data-action="open-patient" data-id="${escapeHtml(patient.id)}">打开</button>
+          <button class="btn btn-ghost btn-small" data-action="edit-patient" data-id="${escapeHtml(patient.id)}">编辑</button>
+          <button class="btn btn-ghost btn-small" data-action="delete-patient" data-id="${escapeHtml(patient.id)}">删除</button>
         </div>
       </div>
     </article>`;
@@ -165,7 +191,7 @@ function renderPatientsPage() {
   <div class="grid grid-3" style="margin-bottom:16px">
     <div class="card stat-card"><div class="stat-label">受试者</div><div class="stat-value">${state.patients.length}</div><div class="stat-note">当前浏览器中的病例</div></div>
     <div class="card stat-card"><div class="stat-label">已录随访</div><div class="stat-value">${state.patients.reduce((sum, p) => sum + p.visits.length, 0)}</div><div class="stat-note">所有受试者合计</div></div>
-    <div class="card stat-card"><div class="stat-label">数据位置</div><div class="stat-value" style="font-size:18px">本地浏览器</div><div class="stat-note">不会上传至服务器</div></div>
+    <div class="card stat-card"><div class="stat-label">数据位置</div><div class="stat-value" style="font-size:18px">本地浏览器</div><div class="stat-note">明文保存在此站点的浏览器存储中</div></div>
   </div>
   ${state.patients.length ? `<div class="patient-list">${patientCards}</div>` : `<div class="card empty">
     <div class="empty-title">还没有受试者</div><p>先创建一个受试者并录入基线病灶。也可以载入内置演示病例查看完整流程。</p>
@@ -190,7 +216,10 @@ function renderSettingsPage() {
 }
 
 function renderBackupPage() {
+  const bytes = serializedStateSize(state);
+  const sizeLabel = bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(2)} MiB`;
   const content = `<div class="page-header"><div><h1 class="page-title">数据备份</h1><p class="page-desc">应用不使用服务器数据库。浏览器数据可能因清理网站数据、无痕模式或设备损坏而丢失，请定期保存 JSON 备份。</p></div></div>
+  <div class="issue issue-warning" role="note"><span>⚠</span><span>病例、备注、测量和审计快照会以明文保存在此浏览器的 localStorage 中。请只使用编码后的受试者编号，不要录入姓名、证件号、联系方式等直接身份信息。当前序列化数据约 ${escapeHtml(sizeLabel)}。</span></div>
   <div class="grid grid-2">
     <section class="card"><div class="card-header"><div><h2 class="card-title">导出完整备份</h2><p class="card-subtitle">包含研究设置、受试者、病灶、随访和审计记录。</p></div></div><div class="card-body"><button class="btn btn-primary" data-action="export-backup">下载 JSON 备份</button></div></section>
     <section class="card"><div class="card-header"><div><h2 class="card-title">恢复备份</h2><p class="card-subtitle">导入会替换当前浏览器中的全部数据。</p></div></div><div class="card-body"><label class="btn btn-secondary" for="backup-file">选择 JSON 文件</label><input id="backup-file" data-action="import-backup" type="file" accept="application/json,.json" hidden></div></section>
@@ -201,7 +230,7 @@ function renderBackupPage() {
 
 function patientTabs(patient, active) {
   const tabs = [['overview','概览'],['lesions','病灶'],['visits','随访录入'],['audit','审计记录']];
-  return `<div class="tabs">${tabs.map(([key,label]) => `<button class="tab ${active === key ? 'active' : ''}" data-action="patient-tab" data-patient-id="${patient.id}" data-tab="${key}">${label}</button>`).join('')}</div>`;
+  return `<div class="tabs">${tabs.map(([key,label]) => `<button class="tab ${active === key ? 'active' : ''}" data-action="patient-tab" data-patient-id="${escapeHtml(patient.id)}" data-tab="${key}">${label}</button>`).join('')}</div>`;
 }
 
 function patientHeader(patient) {
@@ -211,7 +240,7 @@ function patientHeader(patient) {
       <h1 class="page-title" style="margin-top:10px">${escapeHtml(patient.code)}</h1>
       <p class="page-desc">${escapeHtml(patient.diagnosis || '未填写诊断')} · 基线 ${escapeHtml(formatDate(patient.baselineDate))}${patient.treatment ? ` · ${escapeHtml(patient.treatment)}` : ''}</p>
     </div>
-    <div class="actions">${summary.code ? responseChip(summary.code) : ''}<button class="btn btn-secondary" data-action="edit-patient" data-id="${patient.id}">编辑资料</button></div>
+    <div class="actions">${summary.code ? responseChip(summary.code) : ''}<button class="btn btn-secondary" data-action="edit-patient" data-id="${escapeHtml(patient.id)}">编辑资料</button></div>
   </div>`;
 }
 
@@ -249,19 +278,19 @@ function renderOverview(patient) {
     <div class="card stat-card"><div class="stat-label">最佳时间点评价</div><div class="stat-value" style="font-size:16px">${best ? responseLabel(patient.mode === 'IRECIST' ? best.irecist.code : best.overall.code) : '尚无'}</div></div>
   </div>
   <section class="card" style="margin-bottom:16px"><div class="card-header"><div><h2 class="card-title">数据检查</h2><p class="card-subtitle">错误项应优先修正；警告项可能需要方案或影像专业判断。</p></div></div><div class="card-body">${renderIssueList(issues)}</div></section>
-  ${timeline ? `<div class="timeline">${timeline}</div>` : `<div class="card empty"><div class="empty-title">尚无随访评价</div><p>先录入基线病灶，再新增第一次随访。</p><button class="btn btn-primary" data-action="add-visit" data-patient-id="${patient.id}">新增随访</button></div>`}`;
+  ${timeline ? `<div class="timeline">${timeline}</div>` : `<div class="card empty"><div class="empty-title">尚无随访评价</div><p>先录入基线病灶，再新增第一次随访。</p><button class="btn btn-primary" data-action="add-visit" data-patient-id="${escapeHtml(patient.id)}">新增随访</button></div>`}`;
 }
 
 function renderLesions(patient) {
-  const targets = patient.targetLesions.map((lesion) => `<div class="lesion-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">${escapeHtml(lesion.organ || '未填写器官')} · ${lesion.isLymphNode ? '淋巴结短径' : '最长径'} · 基线 ${formatNumber(Number(lesion.baselineMm))} mm${lesion.location ? ` · ${escapeHtml(lesion.location)}` : ''}</div></div><div class="actions"><button class="btn btn-ghost btn-small" data-action="edit-target" data-patient-id="${patient.id}" data-id="${lesion.id}">编辑</button><button class="btn btn-ghost btn-small" data-action="delete-target" data-patient-id="${patient.id}" data-id="${lesion.id}">删除</button></div></div>`).join('');
-  const nonTargets = patient.nonTargetLesions.map((lesion) => `<div class="lesion-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">${escapeHtml(lesion.organ || '未填写器官')}${lesion.location ? ` · ${escapeHtml(lesion.location)}` : ''}</div></div><div class="actions"><button class="btn btn-ghost btn-small" data-action="edit-nontarget" data-patient-id="${patient.id}" data-id="${lesion.id}">编辑</button><button class="btn btn-ghost btn-small" data-action="delete-nontarget" data-patient-id="${patient.id}" data-id="${lesion.id}">删除</button></div></div>`).join('');
+  const targets = patient.targetLesions.map((lesion) => `<div class="lesion-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">${escapeHtml(lesion.organ || '未填写器官')} · ${lesion.isLymphNode ? '淋巴结短径' : '最长径'} · 基线 ${formatNumber(Number(lesion.baselineMm))} mm${lesion.location ? ` · ${escapeHtml(lesion.location)}` : ''}</div></div><div class="actions"><button class="btn btn-ghost btn-small" data-action="edit-target" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(lesion.id)}">编辑</button><button class="btn btn-ghost btn-small" data-action="delete-target" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(lesion.id)}">删除</button></div></div>`).join('');
+  const nonTargets = patient.nonTargetLesions.map((lesion) => `<div class="lesion-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">${escapeHtml(lesion.organ || '未填写器官')}${lesion.location ? ` · ${escapeHtml(lesion.location)}` : ''}</div></div><div class="actions"><button class="btn btn-ghost btn-small" data-action="edit-nontarget" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(lesion.id)}">编辑</button><button class="btn btn-ghost btn-small" data-action="delete-nontarget" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(lesion.id)}">删除</button></div></div>`).join('');
   const visits = sortVisits(patient);
   const visitMap = new Map(visits.map((visit) => [visit.id, visit]));
-  const newLesions = patient.newLesions.map((lesion) => `<div class="lesion-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">${lesion.kind === 'target' ? '新发靶病灶' : '新发非靶病灶'} · ${escapeHtml(lesion.organ || '未填写器官')} · 首见于 ${escapeHtml(visitMap.get(lesion.firstDetectedVisitId)?.label || '未知随访')}</div></div><div class="actions"><button class="btn btn-ghost btn-small" data-action="edit-newlesion" data-patient-id="${patient.id}" data-id="${lesion.id}">编辑</button><button class="btn btn-ghost btn-small" data-action="delete-newlesion" data-patient-id="${patient.id}" data-id="${lesion.id}">删除</button></div></div>`).join('');
+  const newLesions = patient.newLesions.map((lesion) => `<div class="lesion-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">${lesion.kind === 'target' ? '新发靶病灶' : '新发非靶病灶'} · ${escapeHtml(lesion.organ || '未填写器官')} · 首见于 ${escapeHtml(visitMap.get(lesion.firstDetectedVisitId)?.label || '未知随访')}</div></div><div class="actions"><button class="btn btn-ghost btn-small" data-action="edit-newlesion" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(lesion.id)}">编辑</button><button class="btn btn-ghost btn-small" data-action="delete-newlesion" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(lesion.id)}">删除</button></div></div>`).join('');
 
   return `<div class="grid grid-2">
-    <section class="card"><div class="card-header"><div><h2 class="card-title">基线靶病灶</h2><p class="card-subtitle">最多 5 个，每器官最多 2 个。</p></div><button class="btn btn-primary btn-small" data-action="add-target" data-patient-id="${patient.id}">＋ 添加</button></div><div class="card-body"><div class="lesion-list">${targets || '<div class="empty">尚未录入靶病灶</div>'}</div></div></section>
-    <section class="card"><div class="card-header"><div><h2 class="card-title">基线非靶病灶</h2><p class="card-subtitle">每次随访记录消失、存在或明确进展。</p></div><button class="btn btn-primary btn-small" data-action="add-nontarget" data-patient-id="${patient.id}">＋ 添加</button></div><div class="card-body"><div class="lesion-list">${nonTargets || '<div class="empty">尚未录入非靶病灶</div>'}</div></div></section>
+    <section class="card"><div class="card-header"><div><h2 class="card-title">基线靶病灶</h2><p class="card-subtitle">最多 5 个，每器官最多 2 个。</p></div><button class="btn btn-primary btn-small" data-action="add-target" data-patient-id="${escapeHtml(patient.id)}">＋ 添加</button></div><div class="card-body"><div class="lesion-list">${targets || '<div class="empty">尚未录入靶病灶</div>'}</div></div></section>
+    <section class="card"><div class="card-header"><div><h2 class="card-title">基线非靶病灶</h2><p class="card-subtitle">每次随访记录消失、存在或明确进展。</p></div><button class="btn btn-primary btn-small" data-action="add-nontarget" data-patient-id="${escapeHtml(patient.id)}">＋ 添加</button></div><div class="card-body"><div class="lesion-list">${nonTargets || '<div class="empty">尚未录入非靶病灶</div>'}</div></div></section>
   </div>
   <section class="card" style="margin-top:16px"><div class="card-header"><div><h2 class="card-title">随访中新发病灶</h2><p class="card-subtitle">新发靶病灶单独求和，不并入基线靶病灶总和。</p></div></div><div class="card-body"><div class="lesion-list">${newLesions || '<div class="empty">尚未记录新发病灶。请在对应随访中添加。</div>'}</div></div></section>`;
 }
@@ -271,14 +300,14 @@ function renderVisits(patient) {
   const cards = results.map((result) => {
     const code = patient.mode === 'IRECIST' ? result.irecist.code : result.overall.code;
     const newCount = patient.newLesions.filter((lesion) => lesion.firstDetectedVisitId === result.visit.id).length;
-    return `<article class="card patient-card"><div><div class="actions"><span class="patient-code" style="font-size:16px">${escapeHtml(result.visit.label)}</span>${responseChip(code)}</div><div class="patient-meta"><span>${escapeHtml(formatDate(result.visit.date))}</span><span>靶病灶总和 ${formatNumber(result.target.currentSum)} mm</span><span>新发病灶 ${newCount} 个</span><span>${result.visit.clinicalStable ? '临床稳定' : '临床不稳定'}</span></div></div><div class="patient-result"><div class="actions"><button class="btn btn-primary btn-small" data-action="add-newlesion" data-patient-id="${patient.id}" data-visit-id="${result.visit.id}">＋ 新发病灶</button><button class="btn btn-secondary btn-small" data-action="edit-visit" data-patient-id="${patient.id}" data-id="${result.visit.id}">编辑随访</button><button class="btn btn-ghost btn-small" data-action="delete-visit" data-patient-id="${patient.id}" data-id="${result.visit.id}">删除</button></div></div></article>`;
+    return `<article class="card patient-card"><div><div class="actions"><span class="patient-code" style="font-size:16px">${escapeHtml(result.visit.label)}</span>${responseChip(code)}</div><div class="patient-meta"><span>${escapeHtml(formatDate(result.visit.date))}</span><span>靶病灶总和 ${formatNumber(result.target.currentSum)} mm</span><span>新发病灶 ${newCount} 个</span><span>${result.visit.clinicalStable ? '临床稳定' : '临床不稳定'}</span></div></div><div class="patient-result"><div class="actions"><button class="btn btn-primary btn-small" data-action="add-newlesion" data-patient-id="${escapeHtml(patient.id)}" data-visit-id="${escapeHtml(result.visit.id)}">＋ 新发病灶</button><button class="btn btn-secondary btn-small" data-action="edit-visit" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(result.visit.id)}">编辑随访</button><button class="btn btn-ghost btn-small" data-action="delete-visit" data-patient-id="${escapeHtml(patient.id)}" data-id="${escapeHtml(result.visit.id)}">删除</button></div></div></article>`;
   }).join('');
-  return `<div class="page-header" style="margin-bottom:14px"><div><h2 class="card-title">随访记录</h2><p class="card-subtitle">建议按影像实际日期录入。iUPD 后的下一次可评价随访用于确认或重置。</p></div><button class="btn btn-primary" data-action="add-visit" data-patient-id="${patient.id}">＋ 新增随访</button></div>${cards ? `<div class="patient-list">${cards}</div>` : '<div class="card empty"><div class="empty-title">还没有随访</div><p>新增随访后可录入每个病灶的测量和状态。</p></div>'}`;
+  return `<div class="page-header" style="margin-bottom:14px"><div><h2 class="card-title">随访记录</h2><p class="card-subtitle">建议按影像实际日期录入。iUPD 后的下一次可评价随访用于确认或重置。</p></div><button class="btn btn-primary" data-action="add-visit" data-patient-id="${escapeHtml(patient.id)}">＋ 新增随访</button></div>${cards ? `<div class="patient-list">${cards}</div>` : '<div class="card empty"><div class="empty-title">还没有随访</div><p>新增随访后可录入每个病灶的测量和状态。</p></div>'}`;
 }
 
 function renderAudit(patient) {
   const entries = state.audit.filter((entry) => entry.patientId === patient.id || (entry.entityType === 'patient' && entry.entityId === patient.id));
-  const rows = entries.map((entry) => `<div class="audit-row"><div class="audit-time">${escapeHtml(formatDateTime(entry.timestamp))}</div><div><div class="audit-summary">${escapeHtml(entry.summary)}</div><div class="audit-actor">${escapeHtml(entry.actor)} · ${escapeHtml(entry.action)}</div></div><button class="btn btn-secondary btn-small" data-action="audit-detail" data-id="${entry.id}">详情</button></div>`).join('');
+  const rows = entries.map((entry) => `<div class="audit-row"><div class="audit-time">${escapeHtml(formatDateTime(entry.timestamp))}</div><div><div class="audit-summary">${escapeHtml(entry.summary)}</div><div class="audit-actor">${escapeHtml(entry.actor)} · ${escapeHtml(entry.action)}</div></div><button class="btn btn-secondary btn-small" data-action="audit-detail" data-id="${escapeHtml(entry.id)}">详情</button></div>`).join('');
   return rows ? `<div class="audit-list">${rows}</div>` : '<div class="card empty"><div class="empty-title">暂无审计记录</div></div>';
 }
 
@@ -334,8 +363,8 @@ function renderVisitModal(modal) {
   const patient = state.patients.find((item) => item.id === modal.patientId);
   const visit = patient?.visits.find((item) => item.id === modal.visitId);
   const value = visit || createVisit({ label: `第 ${patient.visits.length + 1} 次随访`, date: '' });
-  const targetRows = patient.targetLesions.map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">基线 ${formatNumber(Number(lesion.baselineMm))} mm · ${lesion.isLymphNode ? '短径' : '最长径'}</div></div><input class="input" name="target__${lesion.id}" type="number" min="0" step="0.1" value="${escapeHtml(value.targetMeasurements?.[lesion.id] ?? '')}" placeholder="mm"></div>`).join('');
-  const ntRows = patient.nonTargetLesions.map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">${escapeHtml(lesion.organ)}</div></div><select name="nt__${lesion.id}"><option value="">请选择</option>${Object.entries(NON_TARGET_STATUS_LABELS).map(([key,label]) => option(key,label,value.nonTargetStatuses?.[lesion.id])).join('')}</select></div>`).join('');
+  const targetRows = patient.targetLesions.map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">基线 ${formatNumber(Number(lesion.baselineMm))} mm · ${lesion.isLymphNode ? '短径' : '最长径'}</div></div><input class="input" name="target__${escapeHtml(lesion.id)}" type="number" min="0" step="0.1" value="${escapeHtml(value.targetMeasurements?.[lesion.id] ?? '')}" placeholder="mm"></div>`).join('');
+  const ntRows = patient.nonTargetLesions.map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)}</div><div class="lesion-meta">${escapeHtml(lesion.organ)}</div></div><select name="nt__${escapeHtml(lesion.id)}"><option value="">请选择</option>${Object.entries(NON_TARGET_STATUS_LABELS).map(([key,label]) => option(key,label,value.nonTargetStatuses?.[lesion.id])).join('')}</select></div>`).join('');
   const orderedVisits = sortVisits(patient);
   const currentVisitIndex = visit ? orderedVisits.findIndex((item) => item.id === visit.id) : Number.POSITIVE_INFINITY;
   const visitIndexes = new Map(orderedVisits.map((item, index) => [item.id, index]));
@@ -343,8 +372,8 @@ function renderVisitModal(modal) {
     const detectedIndex = visitIndexes.get(lesion.firstDetectedVisitId);
     return !visit || (Number.isInteger(detectedIndex) && detectedIndex <= currentVisitIndex);
   });
-  const newTargetRows = trackableNewLesions.filter((lesion) => lesion.kind === 'target').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发靶病灶 · ${escapeHtml(lesion.organ)}</div></div><input class="input" name="newtarget__${lesion.id}" type="number" min="0" step="0.1" value="${escapeHtml(value.newTargetMeasurements?.[lesion.id] ?? '')}" placeholder="mm"></div>`).join('');
-  const newNtRows = trackableNewLesions.filter((lesion) => lesion.kind === 'nonTarget').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发非靶病灶 · ${escapeHtml(lesion.organ)}</div></div><select name="newnt__${lesion.id}"><option value="">请选择</option>${Object.entries(NEW_NON_TARGET_STATUS_LABELS).map(([key,label]) => option(key,label,value.newNonTargetStatuses?.[lesion.id])).join('')}</select></div>`).join('');
+  const newTargetRows = trackableNewLesions.filter((lesion) => lesion.kind === 'target').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发靶病灶 · ${escapeHtml(lesion.organ)}</div></div><input class="input" name="newtarget__${escapeHtml(lesion.id)}" type="number" min="0" step="0.1" value="${escapeHtml(value.newTargetMeasurements?.[lesion.id] ?? '')}" placeholder="mm"></div>`).join('');
+  const newNtRows = trackableNewLesions.filter((lesion) => lesion.kind === 'nonTarget').map((lesion) => `<div class="measurement-row"><div><div class="lesion-name">${escapeHtml(lesion.label)} ${lesion.definite === false ? '<span class="badge badge-warning">待确认</span>' : ''}</div><div class="lesion-meta">新发非靶病灶 · ${escapeHtml(lesion.organ)}</div></div><select name="newnt__${escapeHtml(lesion.id)}"><option value="">请选择</option>${Object.entries(NEW_NON_TARGET_STATUS_LABELS).map(([key,label]) => option(key,label,value.newNonTargetStatuses?.[lesion.id])).join('')}</select></div>`).join('');
   return modalFrame(visit ? '编辑随访' : '新增随访', `<form data-form="visit-form">
     <input type="hidden" name="patientId" value="${escapeHtml(patient.id)}"><input type="hidden" name="visitId" value="${escapeHtml(visit?.id || '')}">
     <div class="form-grid"><div class="field"><label>随访名称 *</label><input class="input" name="label" value="${escapeHtml(value.label)}" required></div><div class="field"><label>影像日期 *</label><input class="input" name="date" type="date" value="${escapeHtml(value.date)}" required></div><div class="field field-full"><label class="checkbox"><input type="checkbox" name="clinicalStable" ${value.clinicalStable !== false ? 'checked' : ''}>患者临床稳定</label><div class="help">该项不改变影像时间点评价，但会影响 iUPD 后继续治疗的提示。</div></div></div>
@@ -424,7 +453,7 @@ function closeModal() {
 
 function logChange(config) {
   appendAudit(state, config);
-  persist();
+  return persist();
 }
 
 function removeMeasurementReferences(patient, lesionId, kind) {
@@ -463,7 +492,7 @@ app.addEventListener('click', (event) => {
     if (!patient || !confirm(`确定删除受试者 ${patient.code} 及其全部数据吗？`)) return;
     const before = clone(patient);
     state.patients = state.patients.filter((item) => item.id !== patient.id);
-    logChange({ action: 'DELETE', entityType: 'patient', entityId: patient.id, patientId: patient.id, summary: `删除受试者 ${patient.code}`, before, after: null });
+    if (!logChange({ action: 'DELETE', entityType: 'patient', entityId: patient.id, patientId: patient.id, summary: `删除受试者 ${patient.code}`, before, after: null })) return;
     showToast('受试者已删除'); render(); return;
   }
 
@@ -480,7 +509,7 @@ app.addEventListener('click', (event) => {
     if (action === 'delete-nontarget') removeMeasurementReferences(patient, lesion.id, 'nonTarget');
     if (action === 'delete-newlesion') removeMeasurementReferences(patient, lesion.id, lesion.kind === 'target' ? 'newTarget' : 'newNonTarget');
     touchPatient(patient);
-    logChange({ action: 'DELETE', entityType: collectionName, entityId: lesion.id, patientId: patient.id, summary: `删除病灶 ${lesion.label}`, before, after: null });
+    if (!logChange({ action: 'DELETE', entityType: collectionName, entityId: lesion.id, patientId: patient.id, summary: `删除病灶 ${lesion.label}`, before, after: null })) return;
     showToast('病灶已删除'); render(); return;
   }
 
@@ -495,18 +524,25 @@ app.addEventListener('click', (event) => {
     patient.newLesions = patient.newLesions.filter((lesion) => lesion.firstDetectedVisitId !== visit.id);
     patient.visits = patient.visits.filter((item) => item.id !== visit.id);
     touchPatient(patient);
-    logChange({ action: 'DELETE', entityType: 'visit', entityId: visit.id, patientId: patient.id, summary: `删除随访 ${visit.label}`, before, after: null });
+    if (!logChange({ action: 'DELETE', entityType: 'visit', entityId: visit.id, patientId: patient.id, summary: `删除随访 ${visit.label}`, before, after: null })) return;
     showToast('随访已删除'); render(); return;
   }
 
   if (action === 'export-backup') return exportBackup(state);
   if (action === 'load-demo') {
     if (state.patients.length && !confirm('载入演示数据会替换当前全部数据。是否继续？')) return;
-    state = createDemoState(); persist(); showToast('已载入演示数据'); setRoute('#/patients'); render(); return;
+    state = createDemoState(); if (!persist()) return; showToast('已载入演示数据'); setRoute('#/patients'); render(); return;
   }
   if (action === 'reset-all') {
     if (!confirm('确定清空全部本地数据吗？此操作无法撤销。')) return;
-    clearState(); state = loadState(); ui.modal = null; showToast('本地数据已清空'); setRoute('#/patients'); render();
+    clearState();
+    state = loadState();
+    lastPersistedState = clone(state);
+    ui.storageWarning = getLastLoadWarning() || null;
+    ui.modal = null;
+    showToast('本地数据已清空');
+    setRoute('#/patients');
+    render();
   }
 });
 
@@ -517,7 +553,7 @@ app.addEventListener('change', async (event) => {
   try {
     state = await importBackup(target.files[0]);
     appendAudit(state, { action: 'IMPORT', entityType: 'study', entityId: 'study', summary: '从 JSON 备份恢复数据' });
-    persist(); showToast('备份恢复成功'); setRoute('#/patients'); render();
+    if (!persist()) return; showToast('备份恢复成功'); setRoute('#/patients'); render();
   } catch (error) {
     alert(`导入失败：${error.message}`);
   } finally {
@@ -540,7 +576,7 @@ app.addEventListener('submit', (event) => {
       assessor: String(data.get('assessor') || '').trim(),
       defaultMode: data.get('defaultMode') === 'RECIST11' ? 'RECIST11' : 'IRECIST'
     };
-    logChange({ action: 'UPDATE', entityType: 'settings', entityId: 'study', summary: '更新研究设置', before, after: state.settings });
+    if (!logChange({ action: 'UPDATE', entityType: 'settings', entityId: 'study', summary: '更新研究设置', before, after: state.settings })) return;
     showToast('设置已保存'); render(); return;
   }
 
@@ -556,7 +592,7 @@ app.addEventListener('submit', (event) => {
       existing.treatment = String(data.get('treatment') || '').trim();
       existing.notes = String(data.get('notes') || '').trim();
       touchPatient(existing);
-      logChange({ action: 'UPDATE', entityType: 'patient', entityId: existing.id, patientId: existing.id, summary: `更新受试者 ${existing.code}`, before, after: existing });
+      if (!logChange({ action: 'UPDATE', entityType: 'patient', entityId: existing.id, patientId: existing.id, summary: `更新受试者 ${existing.code}`, before, after: existing })) return;
       closeModal(); showToast('受试者已更新'); return;
     }
     const patient = createPatient({
@@ -564,7 +600,7 @@ app.addEventListener('submit', (event) => {
       diagnosis: data.get('diagnosis'), treatment: data.get('treatment'), notes: data.get('notes')
     });
     state.patients.unshift(patient);
-    logChange({ action: 'CREATE', entityType: 'patient', entityId: patient.id, patientId: patient.id, summary: `创建受试者 ${patient.code}`, before: null, after: patient });
+    if (!logChange({ action: 'CREATE', entityType: 'patient', entityId: patient.id, patientId: patient.id, summary: `创建受试者 ${patient.code}`, before: null, after: patient })) return;
     ui.modal = null; showToast('受试者已创建'); setRoute(`#/patient/${patient.id}/lesions`); render(); return;
   }
 
@@ -587,7 +623,7 @@ app.addEventListener('submit', (event) => {
     const before = existing ? clone(existing) : null;
     if (existing) Object.assign(existing, next); else patient.targetLesions.push(next);
     touchPatient(patient);
-    logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'targetLesion', entityId: next.id, patientId: patient.id, summary: `${existing ? '更新' : '添加'}基线靶病灶 ${next.label}`, before, after: next });
+    if (!logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'targetLesion', entityId: next.id, patientId: patient.id, summary: `${existing ? '更新' : '添加'}基线靶病灶 ${next.label}`, before, after: next })) return;
     closeModal(); showToast('靶病灶已保存'); return;
   }
 
@@ -600,7 +636,7 @@ app.addEventListener('submit', (event) => {
     const before = existing ? clone(existing) : null;
     if (existing) Object.assign(existing, next); else patient.nonTargetLesions.push(next);
     touchPatient(patient);
-    logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'nonTargetLesion', entityId: next.id, patientId: patient.id, summary: `${existing ? '更新' : '添加'}非靶病灶 ${next.label}`, before, after: next });
+    if (!logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'nonTargetLesion', entityId: next.id, patientId: patient.id, summary: `${existing ? '更新' : '添加'}非靶病灶 ${next.label}`, before, after: next })) return;
     closeModal(); showToast('非靶病灶已保存'); return;
   }
 
@@ -628,7 +664,7 @@ app.addEventListener('submit', (event) => {
     for (const lesion of patient.newLesions.filter((item) => item.kind === 'nonTarget')) visit.newNonTargetStatuses[lesion.id] = String(data.get(`newnt__${lesion.id}`) || '');
     if (!existing) patient.visits.push(visit);
     touchPatient(patient);
-    logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'visit', entityId: visit.id, patientId: patient.id, summary: `${existing ? '更新' : '新增'}随访 ${visit.label}`, before, after: visit });
+    if (!logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'visit', entityId: visit.id, patientId: patient.id, summary: `${existing ? '更新' : '新增'}随访 ${visit.label}`, before, after: visit })) return;
     closeModal(); showToast('随访已保存'); return;
   }
 
@@ -667,7 +703,7 @@ app.addEventListener('submit', (event) => {
       }
     }
     touchPatient(patient);
-    logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'newLesion', entityId: next.id, patientId: patient.id, summary: `${existing ? '更新' : '添加'}新发病灶 ${next.label}`, before, after: next });
+    if (!logChange({ action: existing ? 'UPDATE' : 'CREATE', entityType: 'newLesion', entityId: next.id, patientId: patient.id, summary: `${existing ? '更新' : '添加'}新发病灶 ${next.label}`, before, after: next })) return;
     closeModal(); showToast('新发病灶已保存'); return;
   }
 });
