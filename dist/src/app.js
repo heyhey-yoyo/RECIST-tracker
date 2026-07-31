@@ -228,7 +228,7 @@ function renderBackupPage() {
     <section class="card"><div class="card-header"><div><h2 class="card-title">导出完整备份</h2><p class="card-subtitle">包含研究设置、受试者、病灶、随访和审计记录。</p></div></div><div class="card-body"><button class="btn btn-primary" data-action="export-backup">下载 JSON 备份</button></div></section>
     <section class="card"><div class="card-header"><div><h2 class="card-title">恢复备份</h2><p class="card-subtitle">导入会替换当前浏览器中的全部数据。</p></div></div><div class="card-body"><label class="btn btn-secondary" for="backup-file">选择 JSON 文件</label><input id="backup-file" data-action="import-backup" type="file" accept="application/json,.json" hidden></div></section>
   </div>
-  <section class="card danger-zone" style="margin-top:16px"><div class="card-header"><h2 class="card-title">危险操作</h2></div><div class="card-body actions"><button class="btn btn-secondary" data-action="load-demo">载入演示数据</button><button class="btn btn-danger" data-action="reset-all">清空全部本地数据</button></div></section>`;
+  <section class="card danger-zone" style="margin-top:16px"><div class="card-header"><h2 class="card-title">危险操作</h2></div><div class="card-body actions"><button class="btn btn-danger" data-action="reset-all">清空全部本地数据</button></div></section>`;
   return shell(content, 'backup');
 }
 
