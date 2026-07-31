@@ -148,16 +148,12 @@ function shell(content, active) {
   </div>`;
 }
 
-function getPatientResultSummary(patient) {
+function getPatientResultSummary(patient, results) {
   if (!patient.visits.length) return { code: null, label: '尚无随访', date: null };
-  if (patient.mode === 'IRECIST') {
-    const results = evaluateIrecistSequence(patient);
-    const last = results.at(-1);
-    return { code: last?.irecist.code, label: responseLabel(last?.irecist.code), date: last?.visit.date };
-  }
-  const results = evaluateRecistSequence(patient);
-  const last = results.at(-1);
-  return { code: last?.overall.code, label: responseLabel(last?.overall.code), date: last?.visit.date };
+  const active = results ?? (patient.mode === 'IRECIST' ? evaluateIrecistSequence(patient) : evaluateRecistSequence(patient));
+  const last = active.at(-1);
+  const code = patient.mode === 'IRECIST' ? last?.irecist.code : last?.overall.code;
+  return { code, label: responseLabel(code), date: last?.visit.date };
 }
 
 function renderPatientsPage() {
@@ -197,7 +193,7 @@ function renderPatientsPage() {
     <div class="empty-title">还没有受试者</div><p>先创建一个受试者并录入基线病灶。也可以载入内置演示病例查看完整流程。</p>
     <div class="actions" style="justify-content:center"><button class="btn btn-primary" data-action="new-patient">新建受试者</button><button class="btn btn-secondary" data-action="load-demo">载入演示数据</button></div>
   </div>`}`;
-  return shell(content, 'patients', state.settings.studyName);
+  return shell(content, 'patients');
 }
 
 function renderSettingsPage() {
@@ -212,7 +208,7 @@ function renderSettingsPage() {
     </div>
     <div class="modal-footer"><button class="btn btn-primary" type="submit">保存设置</button></div>
   </form>`;
-  return shell(content, 'settings', '研究设置');
+  return shell(content, 'settings');
 }
 
 function renderBackupPage() {
@@ -225,7 +221,7 @@ function renderBackupPage() {
     <section class="card"><div class="card-header"><div><h2 class="card-title">恢复备份</h2><p class="card-subtitle">导入会替换当前浏览器中的全部数据。</p></div></div><div class="card-body"><label class="btn btn-secondary" for="backup-file">选择 JSON 文件</label><input id="backup-file" data-action="import-backup" type="file" accept="application/json,.json" hidden></div></section>
   </div>
   <section class="card danger-zone" style="margin-top:16px"><div class="card-header"><h2 class="card-title">危险操作</h2></div><div class="card-body actions"><button class="btn btn-secondary" data-action="load-demo">载入演示数据</button><button class="btn btn-danger" data-action="reset-all">清空全部本地数据</button></div></section>`;
-  return shell(content, 'backup', '数据备份');
+  return shell(content, 'backup');
 }
 
 function patientTabs(patient, active) {
@@ -233,8 +229,7 @@ function patientTabs(patient, active) {
   return `<div class="tabs">${tabs.map(([key,label]) => `<button class="tab ${active === key ? 'active' : ''}" data-action="patient-tab" data-patient-id="${escapeHtml(patient.id)}" data-tab="${key}">${label}</button>`).join('')}</div>`;
 }
 
-function patientHeader(patient) {
-  const summary = getPatientResultSummary(patient);
+function patientHeader(patient, summary) {
   return `<div class="page-header">
     <div><div class="actions"><button class="btn btn-ghost btn-small" data-action="back-patients">← 返回</button><span class="badge badge-primary">${patient.mode === 'IRECIST' ? 'iRECIST' : 'RECIST 1.1'}</span></div>
       <h1 class="page-title" style="margin-top:10px">${escapeHtml(patient.code)}</h1>
@@ -244,9 +239,7 @@ function patientHeader(patient) {
   </div>`;
 }
 
-function renderOverview(patient) {
-  const recist = evaluateRecistSequence(patient);
-  const irecist = patient.mode === 'IRECIST' ? evaluateIrecistSequence(patient) : [];
+function renderOverview(patient, recist, irecist) {
   const activeResults = patient.mode === 'IRECIST' ? irecist : recist;
   const best = patient.mode === 'IRECIST' ? bestIrecistTimepoint(irecist) : bestRecistTimepoint(recist);
   const last = activeResults.at(-1);
@@ -295,8 +288,7 @@ function renderLesions(patient) {
   <section class="card" style="margin-top:16px"><div class="card-header"><div><h2 class="card-title">随访中新发病灶</h2><p class="card-subtitle">新发靶病灶单独求和，不并入基线靶病灶总和。</p></div></div><div class="card-body"><div class="lesion-list">${newLesions || '<div class="empty">尚未记录新发病灶。请在对应随访中添加。</div>'}</div></div></section>`;
 }
 
-function renderVisits(patient) {
-  const results = patient.mode === 'IRECIST' ? evaluateIrecistSequence(patient) : evaluateRecistSequence(patient);
+function renderVisits(patient, results = patient.mode === 'IRECIST' ? evaluateIrecistSequence(patient) : evaluateRecistSequence(patient)) {
   const cards = results.map((result) => {
     const code = patient.mode === 'IRECIST' ? result.irecist.code : result.overall.code;
     const newCount = patient.newLesions.filter((lesion) => lesion.firstDetectedVisitId === result.visit.id).length;
@@ -313,9 +305,17 @@ function renderAudit(patient) {
 
 function renderPatientPage(route) {
   const patient = state.patients.find((item) => item.id === route.patientId);
-  if (!patient) return shell('<div class="card empty"><div class="empty-title">受试者不存在</div><button class="btn btn-primary" data-action="back-patients">返回列表</button></div>', 'patients', '受试者');
-  const tabContent = route.tab === 'lesions' ? renderLesions(patient) : route.tab === 'visits' ? renderVisits(patient) : route.tab === 'audit' ? renderAudit(patient) : renderOverview(patient);
-  return shell(`${patientHeader(patient)}${patientTabs(patient, route.tab)}${tabContent}`, 'patients', patient.code);
+  if (!patient) return shell('<div class="card empty"><div class="empty-title">受试者不存在</div><button class="btn btn-primary" data-action="back-patients">返回列表</button></div>', 'patients');
+  // 每个 tab 共享同一份序列评估结果，避免一次渲染重复计算
+  const recist = evaluateRecistSequence(patient);
+  const irecist = patient.mode === 'IRECIST' ? evaluateIrecistSequence(patient) : [];
+  const results = patient.mode === 'IRECIST' ? irecist : recist;
+  const summary = getPatientResultSummary(patient, results);
+  const tabContent = route.tab === 'lesions' ? renderLesions(patient)
+    : route.tab === 'visits' ? renderVisits(patient, results)
+    : route.tab === 'audit' ? renderAudit(patient)
+    : renderOverview(patient, recist, irecist);
+  return shell(`${patientHeader(patient, summary)}${patientTabs(patient, route.tab)}${tabContent}`, 'patients');
 }
 
 function renderPatientModal(modal) {

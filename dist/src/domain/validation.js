@@ -2,6 +2,15 @@ import { baselineTargetSum, sortVisits, targetSumAtVisit } from './recist.js';
 import { daysBetween } from '../utils/format.js';
 import { parseMeasurement } from '../utils/measurement.js';
 
+function organCounts(lesions) {
+  const counts = new Map();
+  for (const lesion of lesions) {
+    const organ = lesion.organ?.trim() || '未填写器官';
+    counts.set(organ, (counts.get(organ) || 0) + 1);
+  }
+  return counts;
+}
+
 export function validatePatient(patient) {
   const issues = [];
   const targets = patient.targetLesions || [];
@@ -9,10 +18,7 @@ export function validatePatient(patient) {
   if (!patient.baselineDate) issues.push({ level: 'warning', message: '尚未填写基线日期。' });
   if (targets.length > 5) issues.push({ level: 'error', message: '基线靶病灶超过 5 个。' });
 
-  const byOrgan = new Map();
   for (const lesion of targets) {
-    const organ = lesion.organ?.trim() || '未填写器官';
-    byOrgan.set(organ, (byOrgan.get(organ) || 0) + 1);
     const parsed = parseMeasurement(lesion.baselineMm);
     if (parsed.status !== 'measured') {
       issues.push({ level: 'error', message: `靶病灶”${lesion.label}”的基线测量无效或未填写。` });
@@ -24,7 +30,7 @@ export function validatePatient(patient) {
       issues.push({ level: 'warning', message: `靶病灶”${lesion.label}”基线长径小于 10 mm，通常不满足可测量靶病灶标准。` });
     }
   }
-  for (const [organ, count] of byOrgan.entries()) {
+  for (const [organ, count] of organCounts(targets).entries()) {
     if (count > 2) issues.push({ level: 'error', message: `器官“${organ}”登记了 ${count} 个基线靶病灶，超过每器官 2 个。` });
   }
 
@@ -51,12 +57,7 @@ export function validatePatient(patient) {
 
   const newTargets = (patient.newLesions || []).filter((lesion) => lesion.kind === 'target' && lesion.definite !== false);
   if (newTargets.length > 5) issues.push({ level: 'error', message: '确定的新发靶病灶超过 5 个。' });
-  const newByOrgan = new Map();
-  for (const lesion of newTargets) {
-    const organ = lesion.organ?.trim() || '未填写器官';
-    newByOrgan.set(organ, (newByOrgan.get(organ) || 0) + 1);
-  }
-  for (const [organ, count] of newByOrgan.entries()) {
+  for (const [organ, count] of organCounts(newTargets).entries()) {
     if (count > 2) issues.push({ level: 'error', message: `器官“${organ}”登记了 ${count} 个新发靶病灶，超过每器官 2 个。` });
   }
 

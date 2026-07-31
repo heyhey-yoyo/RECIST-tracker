@@ -1,4 +1,4 @@
-import { createInitialState } from './domain/model.js';
+import { createInitialState, nowIso } from './domain/model.js';
 
 export function createDemoState() {
   const state = createInitialState();
@@ -54,7 +54,7 @@ export function createDemoState() {
     updatedAt: '2026-04-05T08:00:00.000Z'
   }];
   state.audit = [{
-    id: 'audit_demo_1', timestamp: new Date().toISOString(), actor: '系统', action: 'LOAD_DEMO',
+    id: 'audit_demo_1', timestamp: nowIso(), actor: '系统', action: 'LOAD_DEMO',
     entityType: 'study', entityId: 'demo', patientId: null,
     summary: '载入演示数据', before: null, after: null
   }];

@@ -45,32 +45,8 @@ export function parseMeasurement(value) {
   return { status: MEASUREMENT_STATUS.INVALID };
 }
 
-/**
- * 批量解析测量值映射表（如 visit.targetMeasurements）。
- * 返回数组中每个元素的解析结果。
- *
- * @param {Record<string, unknown>} map - 病灶ID → 原始值
- * @param {Array<{id: string}>} lesions - 病灶列表
- * @returns {Array<{ lesionId: string, status: 'measured' | 'missing' | 'invalid', mm?: number }>}
- */
-export function parseMeasurementMap(map, lesions) {
-  return lesions.map((lesion) => {
-    const raw = map?.[lesion.id];
-    const parsed = parseMeasurement(raw);
-    return { lesionId: lesion.id, ...parsed };
-  });
-}
-
 export function allMeasured(parsedList) {
   return parsedList.every((item) => item.status === MEASUREMENT_STATUS.MEASURED);
-}
-
-export function hasMissing(parsedList) {
-  return parsedList.some((item) => item.status === MEASUREMENT_STATUS.MISSING);
-}
-
-export function hasInvalid(parsedList) {
-  return parsedList.some((item) => item.status === MEASUREMENT_STATUS.INVALID);
 }
 
 export function sumMeasured(parsedList) {

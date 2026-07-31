@@ -1,13 +1,6 @@
+import { NON_TARGET_STATUSES } from './model.js';
 import { daysBetween } from '../utils/format.js';
 import { parseMeasurement, sumMeasured } from '../utils/measurement.js';
-
-const NON_TARGET_STATUSES = new Set([
-  'absent',
-  'present',
-  'unequivocalProgression',
-  'furtherIncrease',
-  'notEvaluable'
-]);
 
 export function sortVisits(patient) {
   return [...(patient.visits || [])].sort((a, b) => {
@@ -45,33 +38,28 @@ function allTargetLesionsResolved(patient, visit) {
   });
 }
 
+function targetResult(code, reason, extra = {}) {
+  return {
+    code, reason,
+    currentSum: null, baselineSum: null, nadirSum: null,
+    baselineChangePct: null, nadirChangePct: null,
+    reappearedAfterTargetCR: false,
+    ...extra
+  };
+}
+
 export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   if (!patient.targetLesions?.length) {
-    return {
-      code: 'NA', currentSum: null, baselineSum: null, nadirSum: null,
-      baselineChangePct: null, nadirChangePct: null,
-      reappearedAfterTargetCR: false,
-      reason: '基线未登记靶病灶。'
-    };
+    return targetResult('NA', '基线未登记靶病灶。');
   }
 
   const baselineSum = baselineTargetSum(patient);
   const currentSum = targetSumAtVisit(patient, visit);
   if (baselineSum == null || baselineSum <= 0) {
-    return {
-      code: 'NE', currentSum, baselineSum, nadirSum: null,
-      baselineChangePct: null, nadirChangePct: null,
-      reappearedAfterTargetCR: false,
-      reason: '基线靶病灶测量不完整或总和为 0，无法评价。'
-    };
+    return targetResult('NE', '基线靶病灶测量不完整或总和为 0，无法评价。', { currentSum, baselineSum });
   }
   if (currentSum == null) {
-    return {
-      code: 'NE', currentSum: null, baselineSum, nadirSum: null,
-      baselineChangePct: null, nadirChangePct: null,
-      reappearedAfterTargetCR: false,
-      reason: '本次随访存在缺失或无效的靶病灶测量，无法评价。'
-    };
+    return targetResult('NE', '本次随访存在缺失或无效的靶病灶测量，无法评价。', { baselineSum });
   }
 
   const priorSums = previousVisits
@@ -85,31 +73,22 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
   const reappearedAfterTargetCR = hadPriorTargetCR && !allTargetLesionsResolved(patient, visit);
 
   if (allTargetLesionsResolved(patient, visit)) {
-    return {
-      code: 'CR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
-      reappearedAfterTargetCR: false,
-      reason: '所有非淋巴结靶病灶均消失，所有靶淋巴结短径均小于 10 mm。'
-    };
+    return targetResult('CR', '所有非淋巴结靶病灶均消失，所有靶淋巴结短径均小于 10 mm。', {
+      currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct
+    });
   }
 
   const absoluteIncrease = currentSum - nadirSum;
   const isNadirZeroReappearance = nadirSum === 0 && currentSum > 0;
   const effectiveReappeared = reappearedAfterTargetCR || isNadirZeroReappearance;
+  const measured = { currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct, reappearedAfterTargetCR: effectiveReappeared };
 
   if (nadirSum > 0 && nadirChangePct >= 20 && absoluteIncrease >= 5) {
-    return {
-      code: 'PD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
-      reappearedAfterTargetCR: effectiveReappeared,
-      reason: `靶病灶直径总和较最低值增加 ${nadirChangePct.toFixed(1)}%，绝对增加 ${absoluteIncrease.toFixed(1)} mm，同时达到 ≥20% 和 ≥5 mm。`
-    };
+    return targetResult('PD', `靶病灶直径总和较最低值增加 ${nadirChangePct.toFixed(1)}%，绝对增加 ${absoluteIncrease.toFixed(1)} mm，同时达到 ≥20% 和 ≥5 mm。`, measured);
   }
 
   if (baselineChangePct <= -30) {
-    return {
-      code: 'PR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
-      reappearedAfterTargetCR: effectiveReappeared,
-      reason: `靶病灶直径总和较基线下降 ${Math.abs(baselineChangePct).toFixed(1)}%，达到至少 30% 的下降。`
-    };
+    return targetResult('PR', `靶病灶直径总和较基线下降 ${Math.abs(baselineChangePct).toFixed(1)}%，达到至少 30% 的下降。`, measured);
   }
 
   const hadPriorPR = priorSums.some((sum) => {
@@ -117,18 +96,10 @@ export function evaluateTargetLesions(patient, visit, previousVisits = []) {
     return pct <= -30;
   });
   if (hadPriorPR) {
-    return {
-      code: 'PR', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
-      reappearedAfterTargetCR: effectiveReappeared,
-      reason: '既往曾达到部分缓解（相对基线下降 ≥30%），当前未达到进展标准，维持部分缓解评价。'
-    };
+    return targetResult('PR', '既往曾达到部分缓解（相对基线下降 ≥30%），当前未达到进展标准，维持部分缓解评价。', measured);
   }
 
-  return {
-    code: 'SD', currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct,
-    reappearedAfterTargetCR: effectiveReappeared,
-    reason: '未达到完全缓解、部分缓解或靶病灶进展标准。'
-  };
+  return targetResult('SD', '未达到完全缓解、部分缓解或靶病灶进展标准。', measured);
 }
 
 export function evaluateNonTargetLesions(patient, visit) {
@@ -223,34 +194,43 @@ export function evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesio
   return { code: 'NE', reason: '现有组合无法形成可评价的总体疗效。' };
 }
 
+/**
+ * 评估单个访视的 RECIST 1.1 结果（靶病灶、非靶病灶、新发病灶、总体评价）。
+ * 供 evaluateRecistSequence 与 iRECIST 状态机（irecist.js）共用。
+ *
+ * @param previousVisits 用于计算最低值（nadir）与既往靶病灶 CR 的访视序列
+ * @param allVisits      用于定位新发病灶首次出现顺序的完整排序访视
+ */
+export function evaluateVisitRecist(patient, visit, previousVisits, allVisits, hadPriorOverallCR) {
+  const target = evaluateTargetLesions(patient, visit, previousVisits);
+  const nonTarget = evaluateNonTargetLesions(patient, visit);
+  const newLesions = definiteNewLesionsByVisit(patient, visit, allVisits);
+  const newlyDetected = newLesionsFirstDetectedAtVisit(patient, visit);
+  const overall = evaluateOverallResponse({
+    target,
+    nonTarget,
+    hasDefiniteNewLesion: newLesions.length > 0,
+    hadPriorOverallCR
+  });
+  return {
+    visit,
+    target,
+    nonTarget,
+    newLesions,
+    newlyDetected,
+    overall,
+    intervalFromBaselineDays: daysBetween(patient.baselineDate, visit.date)
+  };
+}
+
 export function evaluateRecistSequence(patient) {
   const visits = sortVisits(patient);
   const results = [];
   let hadPriorOverallCR = false;
   for (let index = 0; index < visits.length; index += 1) {
-    const visit = visits[index];
-    const previousVisits = visits.slice(0, index);
-    const target = evaluateTargetLesions(patient, visit, previousVisits);
-    const nonTarget = evaluateNonTargetLesions(patient, visit);
-    const newLesions = definiteNewLesionsByVisit(patient, visit, visits);
-    const newlyDetected = newLesionsFirstDetectedAtVisit(patient, visit);
-    const overall = evaluateOverallResponse({
-      target,
-      nonTarget,
-      hasDefiniteNewLesion: newLesions.length > 0,
-      hadPriorOverallCR
-    });
-    if (overall.code === 'CR') hadPriorOverallCR = true;
-    const intervalFromBaselineDays = daysBetween(patient.baselineDate, visit.date);
-    results.push({
-      visit,
-      target,
-      nonTarget,
-      newLesions,
-      newlyDetected,
-      overall,
-      intervalFromBaselineDays
-    });
+    const result = evaluateVisitRecist(patient, visits[index], visits.slice(0, index), visits, hadPriorOverallCR);
+    if (result.overall.code === 'CR') hadPriorOverallCR = true;
+    results.push(result);
   }
   return results;
 }

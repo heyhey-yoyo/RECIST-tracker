@@ -1,6 +1,8 @@
 import {
   SCHEMA_VERSION,
-  createInitialState
+  createInitialState,
+  NON_TARGET_STATUSES,
+  NEW_NON_TARGET_STATUSES
 } from './model.js';
 import { parseMeasurement } from '../utils/measurement.js';
 
@@ -8,12 +10,6 @@ const ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,127}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MODES = new Set(['RECIST11', 'IRECIST']);
 const NEW_LESION_KINDS = new Set(['target', 'nonTarget']);
-const NON_TARGET_STATUSES = new Set([
-  'absent', 'present', 'unequivocalProgression', 'furtherIncrease', 'notEvaluable'
-]);
-const NEW_NON_TARGET_STATUSES = new Set([
-  'absent', 'present', 'increased', 'notEvaluable'
-]);
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 export class StateValidationError extends Error {

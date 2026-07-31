@@ -31,6 +31,10 @@ export const NEW_NON_TARGET_STATUS_LABELS = Object.freeze({
   notEvaluable: '无法评价'
 });
 
+// 状态枚举的唯一来源：由上方 LABELS 键派生，recist.js / schema.js 均引用此处
+export const NON_TARGET_STATUSES = Object.freeze(new Set(Object.keys(NON_TARGET_STATUS_LABELS)));
+export const NEW_NON_TARGET_STATUSES = Object.freeze(new Set(Object.keys(NEW_NON_TARGET_STATUS_LABELS)));
+
 export function createId(prefix = 'id') {
   if (globalThis.crypto?.randomUUID) return `${prefix}_${globalThis.crypto.randomUUID()}`;
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;

@@ -1,11 +1,4 @@
-import {
-  definiteNewLesionsByVisit,
-  evaluateNonTargetLesions,
-  evaluateOverallResponse,
-  evaluateTargetLesions,
-  newLesionsFirstDetectedAtVisit,
-  sortVisits
-} from './recist.js';
+import { evaluateOverallResponse, evaluateVisitRecist, sortVisits } from './recist.js';
 import { daysBetween } from '../utils/format.js';
 import { parseMeasurement, allMeasured, sumMeasured } from '../utils/measurement.js';
 
@@ -228,28 +221,6 @@ function canResetFromIupd({ baseOverall, metrics, pending, recistResult }) {
   return currentRank === anchorRank && targetImproved;
 }
 
-function makeRecistResult(patient, visit, previousStateVisits, allVisits, hadPriorOverallCR) {
-  const target = evaluateTargetLesions(patient, visit, previousStateVisits);
-  const nonTarget = evaluateNonTargetLesions(patient, visit);
-  const newLesions = definiteNewLesionsByVisit(patient, visit, allVisits);
-  const newlyDetected = newLesionsFirstDetectedAtVisit(patient, visit);
-  const overall = evaluateOverallResponse({
-    target,
-    nonTarget,
-    hasDefiniteNewLesion: newLesions.length > 0,
-    hadPriorOverallCR
-  });
-  return {
-    visit,
-    target,
-    nonTarget,
-    newLesions,
-    newlyDetected,
-    overall,
-    intervalFromBaselineDays: daysBetween(patient.baselineDate, visit.date)
-  };
-}
-
 export function evaluateIrecistSequence(patient) {
   const visits = sortVisits(patient);
   const results = [];
@@ -263,7 +234,7 @@ export function evaluateIrecistSequence(patient) {
     const intervalDays = pending ? daysBetween(pending.date, visit.date) : null;
     const tooEarly = Boolean(pending && intervalDays != null && intervalDays < 28);
     const stateVisitsForCurrent = [...committedVisits, visit];
-    const recistResult = makeRecistResult(
+    const recistResult = evaluateVisitRecist(
       patient,
       visit,
       committedVisits,

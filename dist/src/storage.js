@@ -19,6 +19,11 @@ function byteLength(text) {
   return new TextEncoder().encode(text).byteLength;
 }
 
+/**
+ * 防御性规则预演：载入数据后先跑一遍全部评估。
+ * 结果不用于展示——若未来规则升级对数据假设更严格（或数据含 schema 校验漏过的异常），
+ * 会在 loadState/importBackup 阶段被拒绝并提示"数据已损坏"，而不是在渲染时崩溃。
+ */
 function preflightCalculations(state) {
   for (const patient of state.patients) {
     evaluateRecistSequence(patient);

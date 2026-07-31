@@ -27,10 +27,12 @@ src/
                         容量监控、写入异常回滚
   demo.js               演示数据工厂（胃癌免疫治疗示例）
   domain/
-    model.js            数据模型：常量、工厂函数（createPatient、createVisit）、
-                        状态规范化、clone 辅助函数
+    model.js            数据模型：常量、状态枚举（NON_TARGET_STATUSES /
+                        NEW_NON_TARGET_STATUSES，全项目唯一来源，由 LABELS 键派生）、
+                        工厂函数（createPatient、createVisit）、状态规范化、clone 辅助函数
     recist.js           RECIST 1.1 规则：靶病灶评估、非靶病灶评估、总体疗效、
-                        序列评估、最佳时间点
+                        序列评估、最佳时间点；evaluateVisitRecist 为单访视共享
+                        评估函数（RECIST 序列与 iRECIST 状态机共用）
     irecist.js          iRECIST 状态机：iUPD 检测、确认逻辑、重置规则、
                         提前扫描隔离（＜28 天不进入状态机）
     validation.js       数据质量检查（病灶数量、器官限制、测量有效性）
@@ -107,6 +109,7 @@ state = {
 - `evaluateTargetLesions(patient, visit, previousVisits)` — 返回 `{ code, currentSum, baselineSum, nadirSum, baselineChangePct, nadirChangePct, reason }`
 - `evaluateNonTargetLesions(patient, visit)` — 返回 `{ code, reason }`
 - `evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesion })` — 综合靶病灶 + 非靶病灶 + 新病灶
+- `evaluateVisitRecist(patient, visit, previousVisits, allVisits, hadPriorOverallCR)` — 单访视共享评估函数，`evaluateRecistSequence` 与 iRECIST 状态机（`irecist.js`）共用，修改 RECIST 规则时只需改此处
 - `evaluateRecistSequence(patient)` — 按时间顺序处理全部访视，返回每次访视的评估结果
 
 **iRECIST**（`irecist.js`）：

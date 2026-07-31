@@ -105,7 +105,7 @@ src/domain/recist.js    RECIST 1.1 规则
 src/domain/irecist.js   iRECIST 顺序状态机
 src/domain/validation.js 数据质量校验
 src/domain/schema.js    导入数据递归白名单校验
-src/domain/model.js     数据模型与工厂函数
+src/domain/model.js     数据模型、工厂函数与状态枚举
 src/utils/format.js     日期/数字格式化与 HTML 转义
 src/utils/measurement.js 严格测量值解析
 src/storage.js          localStorage、审计、容量监控与 JSON 备份
