@@ -8,7 +8,7 @@ RECIST Tracker 是一个**纯前端 SPA**（单页应用），用于 RECIST 1.1 
 
 ```bash
 npm run test       # Node.js 内置测试运行器，测试文件在 tests/
-npm run build      # 将 public/ + src/ 复制到 dist/（脚本：scripts/build.mjs）
+npm run build      # 将 index.html + _headers + src/ 复制到 dist/（脚本：scripts/build.mjs）
 npm run check      # test + build
 npm run preview    # 通过 Python http.server 在 http://localhost:4173 预览 dist/
 ```
@@ -18,8 +18,9 @@ npm run preview    # 通过 Python http.server 在 http://localhost:4173 预览 
 ## 项目结构
 
 ```text
-public/                 静态 HTML 入口与 Cloudflare _headers
-scripts/build.mjs       零依赖静态构建脚本（复制 public/ + src/ → dist/）
+index.html              静态 HTML 入口（位于仓库根目录）
+_headers                Cloudflare Pages 响应头（位于仓库根目录）
+scripts/build.mjs       零依赖静态构建脚本（复制 index.html + _headers + src/ → dist/）
 src/
   app.js                全部 UI：路由（hash-based）、表单、模态框、事件处理、渲染
   styles.css            单文件 CSS，无预处理器或框架
@@ -70,7 +71,7 @@ dist/                   构建产物（由构建脚本生成，仅供参考）
 
 ### 状态管理
 
-全部应用状态存储在单个 `state` 对象（`src/app.js:26`）：
+全部应用状态存储在单个 `state` 对象（`src/app.js:35`）：
 
 ```js
 state = {
@@ -98,7 +99,6 @@ state = {
 - `#/patient/:id/audit` — 审计日志
 - `#/settings` — 研究设置
 - `#/backup` — 数据备份/恢复
-- `#/about` — 规则边界
 
 ### UI 模式
 
