@@ -145,6 +145,7 @@ state = {
 - **语言**：用户界面文案和注释使用中文，标识符使用英文。
 - **模块系统**：仅使用 ES modules（`import`/`export`），无需打包器。
 - **零依赖**：项目有意保持零 npm 依赖。未经明确批准不得添加依赖。
+- 页面内容主体采用 `ydchen-portfolio` 的米白 / 浅灰 / 赤陶色视觉系统；`YDchen Tools` 页眉结构与样式保持不变。
 - **工厂函数**：使用 `model.js` 中的 `createPatient()`、`createVisit()`、`createInitialState()` 构造对象，不要手动构建。
 - **克隆**：使用 `model.js` 中的 `clone()`（JSON 往返）进行审计日志前的深拷贝。
 - **ID**：使用 `createId(prefix)` 生成 `prefix_uuid`，底层为 `crypto.randomUUID()`。

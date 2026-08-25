@@ -279,3 +279,20 @@ tr:last-child td { border-bottom: 0; }
   .modal { max-height: calc(100vh - 16px); border-radius: 10px; }
   .toast { left: 12px; right: 12px; bottom: 12px; max-width: none; }
 }
+
+/* Portfolio visual system for the application body. The YDchen Tools header above is intentionally unchanged. */
+:root{--bg:#f3eee5;--surface:rgba(255,252,247,.82);--surface-soft:#ebe4d8;--line:rgba(36,34,31,.18);--line-strong:rgba(36,34,31,.3);--text:#24221f;--muted:#6f6a62;--primary:#c15f3c;--primary-strong:#a94f31;--primary-soft:#f0ded4;--success:#357b56;--success-soft:#e5f1e8;--warning:#a56b2b;--warning-soft:#f6e9d4;--danger:#b84a45;--danger-soft:#f6dfdd;--neutral:#6f6a62;--neutral-soft:#ebe4d8;--shadow:0 14px 32px rgba(36,34,31,.06);--radius:0}
+.content{max-width:1440px;padding:clamp(32px,5vw,72px) clamp(22px,4.5vw,72px) 80px}
+.content .page-title,.content .card-title,.content h2,.content h3{font-family:Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-.035em}
+.content .card{background:var(--surface);border-color:var(--line);border-radius:0;box-shadow:none}
+.content .card-header{border-color:var(--line)}
+.content .btn{border-radius:0}.content .btn-primary{background:var(--primary)}.content .btn-primary:hover{background:var(--primary-strong)}.content .btn-secondary{background:transparent;border-color:var(--line-strong)}
+.content .btn-ghost:hover{background:rgba(235,228,216,.7);color:var(--text)}
+.content input,.content select,.content textarea{border-color:var(--line-strong);border-radius:0;background:rgba(255,255,255,.42);color:var(--text)}
+.content input:focus,.content select:focus,.content textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(193,95,60,.14)}
+.content .patient-card,.content .timeline-item,.content .lesion-row,.content .metric,.content .audit-row{border-radius:0;background:rgba(235,228,216,.62);border-color:var(--line)}
+.content .reason,.content .callout{border-radius:0;background:var(--primary-soft);border-color:rgba(193,95,60,.28);color:#7c3422}
+.content .tabs{border-color:var(--line)}.content .tab.active{color:var(--primary-strong);border-bottom-color:var(--primary)}
+.content th{background:rgba(235,228,216,.7);border-color:var(--line);color:var(--muted)}.content td{border-color:rgba(36,34,31,.1)}
+@media(max-width:760px){.content{padding:28px 18px 56px}}@media(max-width:460px){.content{padding:24px 12px 48px}.content .card-body,.content .patient-card,.content .timeline-item{padding:18px}}
+@media print{.content{max-width:none;padding:0}.content .card{box-shadow:none;border:1px solid #ccc}}
