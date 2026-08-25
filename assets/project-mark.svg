@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <title>RECIST Tracker</title><rect x="2" y="2" width="44" height="44" rx="4" fill="#24221f"/>
+  <circle cx="24" cy="24" r="10" fill="none" stroke="#f3eee5" stroke-width="2.2"/><circle cx="24" cy="24" r="4" fill="#c15f3c"/>
+  <path d="M8 15h10M8 33h10M30 15h10M30 33h10M13 12v6m0 12v6m22-24v6m0 12v6" stroke="#f3eee5" stroke-width="2.2" stroke-linecap="round"/>
+</svg>
