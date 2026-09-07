@@ -16,7 +16,9 @@ RECIST Tracker 是一个纯前端 SPA（单页应用），用于 RECIST 1.1 和 
 ```text
 index.html              静态 HTML 入口（位于仓库根目录）
 _headers                Cloudflare Pages 响应头（位于仓库根目录）
-scripts/build.mjs       零依赖静态构建脚本（复制 index.html + _headers + src/ → dist/）
+assets/
+  project-mark.svg      项目专属标志（浏览器标题栏 favicon）
+scripts/build.mjs       零依赖静态构建脚本（复制 index.html + _headers + assets/ + src/ → dist/）
 src/
   app.js                全部 UI：路由（hash-based）、表单、模态框、事件处理、渲染
   styles.css            单文件 CSS，无预处理器或框架
@@ -44,6 +46,10 @@ tests/
 docs/
   DATA_MODEL.md         完整数据结构参考
   RULES.md              RECIST 1.1 / iRECIST 规则边界与边缘情况
+wrangler.jsonc          Workers 静态资产配置（assets + single-page-application）
+package.json            npm 脚本与版本常量
+LICENSE                 MIT 许可证
+.nvmrc                  Node 版本约定（20）
 dist/                   构建产物（由构建脚本生成，仅供参考）
 ```
 
@@ -66,7 +72,7 @@ npm run preview    # 通过 Python http.server 在 http://localhost:4173 预览 
 
 ### 状态管理
 
-全部应用状态存储在单个 `state` 对象（`src/app.js:35`）：
+全部应用状态存储在单个 `state` 对象（`src/app.js:43`）：
 
 ```js
 state = {
@@ -160,7 +166,7 @@ iRECIST（`irecist.js`）：
 
 ## 标志维护约定
 
-浏览器标题栏使用统一系列的项目专属 `project-mark.svg`。页面中的 `YDchen Tools` 文字页眉是受保护的品牌区域，必须保持原结构、尺寸与样式，不使用项目标志替换，不得改变页面布局。
+浏览器标题栏使用统一系列的项目专属 `assets/project-mark.svg`。页面中的 `YDchen Tools` 文字页眉是受保护的品牌区域，必须保持原结构、尺寸与样式，不使用项目标志替换，不得改变页面布局。
 
 ---
 
@@ -170,5 +176,5 @@ iRECIST（`irecist.js`）：
 >
 > - **修改代码后必须同步更新本 AGENTS.md 与 README.md** — 新增文件、架构变更、功能增删、部署方式变更都需要在两份文档中体现
 > - README.md 面向**人类用户**（功能介绍、运行方法、部署步骤），AGENTS.md 面向 **AI 代理**（架构、代码组织、测试策略、开发约定）
-> - 两份文件**不可互相替代**，各有所众
+> - 两份文件**不可互相替代**，各有所长
 > - 项目的实际文件结构必须与 AGENTS.md 中列出的文件清单保持一致

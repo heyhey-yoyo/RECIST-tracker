@@ -145,7 +145,6 @@ function shell(content, active) {
         <div class="site-header-divider" aria-hidden="true"></div>
         <div class="tool-heading">
           <h1>RECIST Response Tracker</h1>
-          <p>RECIST 1.1 · iRECIST · 疗效评估</p>
         </div>
       </div>
     </header>
