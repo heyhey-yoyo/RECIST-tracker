@@ -18,6 +18,8 @@ index.html              静态 HTML 入口（位于仓库根目录）
 _headers                Cloudflare Pages 响应头（位于仓库根目录）
 assets/
   project-mark.svg      项目专属标志（浏览器标题栏 favicon）
+scripts/browser-check.mjs 零依赖真实浏览器回归入口（临时本地服务与 Chromium 调试管道）
+scripts/browser-scenarios.mjs 界面保存、重载、配额回滚与旧数据恢复场景
 scripts/build.mjs       零依赖静态构建脚本（复制 index.html + _headers + assets/ + src/ → dist/）
 src/
   app.js                全部 UI：路由（hash-based）、表单、模态框、事件处理、渲染
@@ -170,6 +172,27 @@ iRECIST（`irecist.js`）：
 浏览器标题栏使用统一系列的项目专属 `assets/project-mark.svg`。页面中的 `YDchen Tools` 文字页眉是受保护的品牌区域，必须保持原结构、尺寸与样式，不使用项目标志替换，不得改变页面布局。
 
 ---
+
+## 问题闭环维护
+
+新增零 npm 依赖浏览器回归：npm run test:browser 使用独立临时浏览器资料，操作真实界面，覆盖原非靶／新发非靶留空保存重载、配额失败的内存与持久化回滚、旧空字符串数据恢复。npm run release:check 串联现有 check 与浏览器回归；本机需 Chrome、Chromium 或 Edge，也可用 BROWSER_EXECUTABLE 指定路径。测试不接触用户真实浏览器资料。
+
+
+## 跨项目视觉与回归基准（2026-09-13）
+
+随访弹窗使用不透明米白背景；普通提示位于模态层下，保存按钮不被临时提示遮挡。
+
+本项目归类为 **Tools**。72px / 64px 页眉，YDchen Tools 文字字标，标题 18px / 16px。 正文采用统一系统无衬线字体、默认 16px / 1.6；标题使用衬线层级，数字与代码可使用统一等宽族。辅助文字通常为 12–14px，密集科学数据可按实际场景调整。主界面延续米白与赤陶 #a94f31，柔和色块上的文字用更深色保证可读性。
+
+统一工具页眉与文字/状态对比度。新增零 npm 依赖的真实浏览器回归：原非靶和新发非靶均未选择时保存恢复、旧空值迁移、配额失败后存储与内存回滚。保留模型和判定计算。
+
+当前检查命令：
+
+```bash
+npm run release:check
+```
+
+本节为当前视觉维护基准，替代此前分散的字号、页眉尺寸和 QA 颜色例外；不要重新添加全局深色主题与末尾浅色覆盖。保留一个顶层 `:root`，条件规则和深色图形舞台局部令牌保持独立。修改后至少核验 1440、820、390px，涉及断点、图表或存储时补查相应交互。构建、单测、浏览器本地和线上部署是不同验收层次，记录其实际范围。
 
 ## AI 维护提醒
 

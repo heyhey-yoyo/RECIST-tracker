@@ -138,12 +138,12 @@ function shell(content, active) {
     : '';
   return `<div class="app-shell">
     <header class="site-header">
-      <div class="site-header-inner">
-        <div class="yd-brand" aria-label="YDchenTools">
-          <span class="yd-brand-name">YDchen</span><span class="yd-brand-tools">Tools</span>
+      <div class="site-header-inner header-inner">
+        <div class="yd-brand header-brand" aria-label="YDchenTools">
+          <span class="yd-brand-name brand-bold">YDchen</span><span class="yd-brand-tools brand-light">Tools</span>
         </div>
-        <div class="site-header-divider" aria-hidden="true"></div>
-        <div class="tool-heading">
+        <div class="site-header-divider header-divider" aria-hidden="true"></div>
+        <div class="tool-heading header-info">
           <h1>RECIST Response Tracker</h1>
         </div>
       </div>
