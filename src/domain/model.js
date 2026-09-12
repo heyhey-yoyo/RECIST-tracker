@@ -94,34 +94,6 @@ export function createVisit(input = {}) {
   };
 }
 
-export function normalizeState(raw) {
-  if (!raw || typeof raw !== 'object') return createInitialState();
-  const base = createInitialState();
-  const state = {
-    ...base,
-    ...raw,
-    settings: { ...base.settings, ...(raw.settings || {}) },
-    patients: Array.isArray(raw.patients) ? raw.patients : [],
-    audit: Array.isArray(raw.audit) ? raw.audit : []
-  };
-  state.schemaVersion = SCHEMA_VERSION;
-  state.patients = state.patients.map((patient) => ({
-    ...patient,
-    targetLesions: Array.isArray(patient.targetLesions) ? patient.targetLesions : [],
-    nonTargetLesions: Array.isArray(patient.nonTargetLesions) ? patient.nonTargetLesions : [],
-    newLesions: Array.isArray(patient.newLesions) ? patient.newLesions : [],
-    visits: Array.isArray(patient.visits) ? patient.visits.map((visit) => ({
-      ...visit,
-      clinicalStable: visit.clinicalStable !== false,
-      targetMeasurements: visit.targetMeasurements || {},
-      nonTargetStatuses: visit.nonTargetStatuses || {},
-      newTargetMeasurements: visit.newTargetMeasurements || {},
-      newNonTargetStatuses: visit.newNonTargetStatuses || {}
-    })) : []
-  }));
-  return state;
-}
-
 export function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }

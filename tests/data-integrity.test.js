@@ -52,6 +52,36 @@ test('prune removes measurement keys before first detection (firstDetected moved
   assert.equal(patient.visits.find((item) => item.id === 'v2').newTargetMeasurements.nl1, 11);
 });
 
+test('legacy empty-string non-target statuses survive a save → reload round trip', () => {
+  // 历史版本会把"未选择"的非靶状态写成 ''，曾导致 schema 拒绝整份本地数据；
+  // 现在载入时丢弃空字符串键，其余数据不丢失
+  const patient = makePatient({
+    nonTargetLesions: [
+      { id: 'nt1', label: 'NT1', organ: '肺', location: '' },
+      { id: 'nt2', label: 'NT2', organ: '肝', location: '' }
+    ],
+    newLesions: [{
+      id: 'nl1', label: 'NL1', organ: '肺', location: '', kind: 'nonTarget',
+      isLymphNode: false, definite: true, firstDetectedVisitId: 'v1'
+    }],
+    visits: [makeVisit({
+      id: 'v1', date: '2026-02-01',
+      nonTargetStatuses: { nt1: '', nt2: 'present' },
+      newNonTargetStatuses: { nl1: '' }
+    })]
+  });
+  // JSON 往返模拟 localStorage 的保存与重新载入
+  const persisted = JSON.stringify(makeState(patient));
+  const normalized = validateAndNormalizeState(JSON.parse(persisted));
+  const visit = normalized.patients[0].visits[0];
+  assert.equal('nt1' in visit.nonTargetStatuses, false);
+  assert.equal(visit.nonTargetStatuses.nt2, 'present');
+  assert.equal('nl1' in visit.newNonTargetStatuses, false);
+  assert.equal(normalized.patients[0].nonTargetLesions.length, 2);
+  assert.equal(normalized.patients[0].newLesions.length, 1);
+  assert.equal(visit.targetMeasurements.t1, 100);
+});
+
 test('data with time-travel keys is rejected by schema but accepted after prune', () => {
   const patient = makePatient({
     newLesions: [newTarget('nl1', 'v2')],

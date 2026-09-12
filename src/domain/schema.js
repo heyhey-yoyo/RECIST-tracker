@@ -146,6 +146,8 @@ function sanitizeStatusMap(raw, path, allowedIds, allowedStatuses) {
   const output = {};
   for (const [key, value] of Object.entries(source)) {
     if (!allowedIds.has(key)) fail(`${path}.${key}`, '引用了不存在的病灶 ID');
+    // 历史版本会把"未选择"写成空字符串，宽容迁移：丢弃该键而非拒绝整份数据
+    if (value === '') continue;
     if (typeof value !== 'string' || !allowedStatuses.has(value)) {
       fail(`${path}.${key}`, '状态值不在允许枚举中');
     }

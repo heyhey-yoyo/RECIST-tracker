@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateIrecistSequence } from '../src/domain/irecist.js';
+import { evaluateIrecistSequence, bestIrecistTimepoint } from '../src/domain/irecist.js';
 import { makePatient, makeVisit } from '../test-utils/fixtures.js';
 
 function newTarget(id, firstDetectedVisitId) {
@@ -157,6 +157,35 @@ test('new target sum exact +5.0 mm boundary confirms iCPD', () => {
   });
   const results = evaluateIrecistSequence(patient);
   assert.deepEqual(results.map((item) => item.irecist.code), ['IUPD', 'ICPD']);
+});
+
+test('bestIrecistTimepoint truncates at iCPD like RECIST truncates at PD', () => {
+  // iPR → iUPD → iCPD → 其后即便出现更好的评价也不应进入最佳时间点
+  const patient = makePatient({
+    newLesions: [newTarget('nl1', 'v2')],
+    visits: [
+      makeVisit({ id: 'v1', date: '2026-02-01', target: 50 }),
+      makeVisit({ id: 'v2', date: '2026-03-01', target: 125, newTargetMeasurements: { nl1: 3.2 } }),
+      makeVisit({ id: 'v3', date: '2026-04-05', target: 125, newTargetMeasurements: { nl1: 8.2 } }),
+      makeVisit({ id: 'v4', date: '2026-05-03', target: 0, newTargetMeasurements: { nl1: 8.2 } })
+    ]
+  });
+  const results = evaluateIrecistSequence(patient);
+  assert.deepEqual(results.map((item) => item.irecist.code), ['IPR', 'IUPD', 'ICPD', 'ICPD']);
+  assert.equal(bestIrecistTimepoint(results).visit.id, 'v1');
+});
+
+test('bestIrecistTimepoint never reports NE as the best timepoint response', () => {
+  const patient = makePatient({
+    newLesions: [newTarget('nl1', 'v1')],
+    visits: [
+      makeVisit({ id: 'v1', date: '2026-02-01', target: 100, newTargetMeasurements: { nl1: 10 } }),
+      makeVisit({ id: 'v2', date: '2026-03-08', target: 50, newTargetMeasurements: {} })
+    ]
+  });
+  const results = evaluateIrecistSequence(patient);
+  assert.deepEqual(results.map((item) => item.irecist.code), ['IUPD', 'NE']);
+  assert.equal(bestIrecistTimepoint(results).visit.id, 'v1');
 });
 
 test('new target sum exact +20% boundary (25.5 → 30.6) confirms iCPD', () => {

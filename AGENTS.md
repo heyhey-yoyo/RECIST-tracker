@@ -25,7 +25,7 @@ src/
   storage.js            localStorage 读写、审计日志、JSON 备份/恢复、容量监控、写入异常回滚
   demo.js               演示数据工厂（胃癌免疫治疗示例）
   domain/
-    model.js            数据模型：常量、状态枚举（NON_TARGET_STATUSES / NEW_NON_TARGET_STATUSES，全项目唯一来源，由 LABELS 键派生）、工厂函数（createPatient、createVisit）、状态规范化、clone、organGroup（RECIST 器官计数归组）
+    model.js            数据模型：常量、状态枚举（NON_TARGET_STATUSES / NEW_NON_TARGET_STATUSES，全项目唯一来源，由 LABELS 键派生）、工厂函数（createPatient、createVisit）、clone、organGroup（RECIST 器官计数归组）
     recist.js           RECIST 1.1 规则：靶病灶评估、非靶病灶评估、总体疗效、序列评估、最佳时间点；evaluateVisitRecist 为单访视共享评估函数；newLesionsTrackableAtVisit / pruneNewLesionTimeTravelKeys 防止时间穿越测量写入
     irecist.js          iRECIST 状态机：iUPD 检测、确认逻辑、重置规则、提前扫描隔离（＜28 天）、NE 时间点隔离
     validation.js       数据质量检查（病灶数量、器官组限制、测量有效性、新发靶病灶可测量性）
@@ -65,7 +65,7 @@ npm run preview    # 通过 Python http.server 在 http://localhost:4173 预览 
 ## 测试
 
 - Node 内置测试运行器（`node:test` + `node:assert/strict`），测试直接导入领域逻辑。
-- 覆盖 RECIST 1.1 矩阵、iRECIST 状态机、测量解析、schema 校验、存储容量与 XSS、数据完整性（时间穿越防护与 schema 往返），共 35 项。
+- 覆盖 RECIST 1.1 矩阵、iRECIST 状态机、测量解析、schema 校验、存储容量与 XSS、数据完整性（时间穿越防护与 schema 往返），共 38 项。
 - 修改 RECIST/iRECIST 规则时，务必添加对应的测试用例。
 
 ## 代码组织与风格约定
@@ -106,7 +106,8 @@ state = {
 整个 UI 使用服务端渲染风格的 HTML 模板字符串，通过 `app.innerHTML = ...` 渲染。无虚拟 DOM 或组件框架。
 
 - `render()` 为主入口：根据路由分发到页面渲染函数，然后设置 `app.innerHTML`。
-- 模态框通过 `ui.modal` 状态管理，在同一 `render()` 流程中渲染。
+- 模态框通过 `ui.modal` 状态管理，在同一 `render()` 流程中渲染。模态框为纵向 flex 布局：页眉固定、`.modal-body` 内部滚动、`.modal-footer` sticky 吸底，多病灶的长随访表单中保存按钮始终可达；模态高度使用 `dvh` 兜底以适配移动端浏览器工具栏。
+- 概览时间线的四指标卡片在 ≤760px 降为 2×2 栅格（不再塌缩为单列），数值字号保持 15px。
 - Toast 通知使用相同模式（`ui.toast`）。
 - 所有事件处理通过 `app` 上的委托监听器（click、change、submit），按 `data-action` 属性区分。
 - 表单数据通过 `new FormData(form)` 读取，按 `form.dataset.form` 分发。

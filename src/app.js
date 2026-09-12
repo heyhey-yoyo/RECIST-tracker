@@ -659,7 +659,13 @@ app.addEventListener('submit', (event) => {
       const raw = String(data.get(`target__${lesion.id}`) ?? '').trim();
       visit.targetMeasurements[lesion.id] = raw === '' ? null : Number(raw);
     }
-    for (const lesion of patient.nonTargetLesions) visit.nonTargetStatuses[lesion.id] = String(data.get(`nt__${lesion.id}`) || '');
+    // 未选择的非靶状态不写入键（与靶病灶测量的 null 语义对齐），
+    // 空字符串不是合法枚举值，写入后 schema 会在下次载入时拒绝整份数据
+    for (const lesion of patient.nonTargetLesions) {
+      const status = String(data.get(`nt__${lesion.id}`) || '');
+      if (status === '') delete visit.nonTargetStatuses[lesion.id];
+      else visit.nonTargetStatuses[lesion.id] = status;
+    }
     // 只写该随访时间点可见的新发病灶；不可见的（首次发现晚于本次，或随访日期被改早）
     // 必须删除残留键，否则导出/本地数据会被 schema 拒绝导致无法恢复
     const trackableIds = new Set(newLesionsTrackableAtVisit(patient, visit).map((lesion) => lesion.id));
@@ -676,7 +682,9 @@ app.addEventListener('submit', (event) => {
         delete visit.newNonTargetStatuses[lesion.id];
         continue;
       }
-      visit.newNonTargetStatuses[lesion.id] = String(data.get(`newnt__${lesion.id}`) || '');
+      const status = String(data.get(`newnt__${lesion.id}`) || '');
+      if (status === '') delete visit.newNonTargetStatuses[lesion.id];
+      else visit.newNonTargetStatuses[lesion.id] = status;
     }
     pruneNewLesionTimeTravelKeys(patient);
     if (!existing) patient.visits.push(visit);

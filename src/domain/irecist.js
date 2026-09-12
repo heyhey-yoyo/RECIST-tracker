@@ -344,11 +344,16 @@ export function evaluateIrecistSequence(patient) {
   return results;
 }
 
+// 与 RECIST 版 bestRecistTimepoint 行为对齐：在确认进展（iCPD）处截断，
+// 且 NE 时间点不参与"最佳时间点评价"
 export function bestIrecistTimepoint(results) {
-  const rank = { ICR: 5, IPR: 4, ISD: 3, NON_ICR_NON_IUPD: 2, IUPD: 1, NE: 0, ICPD: -1 };
+  const rank = { ICR: 5, IPR: 4, ISD: 3, NON_ICR_NON_IUPD: 2, IUPD: 1, ICPD: 0 };
   let best = null;
   for (const result of results) {
-    if (!best || (rank[result.irecist.code] ?? -2) > (rank[best.irecist.code] ?? -2)) best = result;
+    const code = result.irecist.code;
+    if (code === 'NE') continue;
+    if (!best || (rank[code] ?? -1) > (rank[best.irecist.code] ?? -1)) best = result;
+    if (code === 'ICPD') break;
   }
   return best;
 }
