@@ -10,6 +10,52 @@ function newTarget(id, firstDetectedVisitId) {
   };
 }
 
+// 官方 Scenario F：稳定原病灶等级下，两个总和分别较 iUPD 锚点缩小至少 5 mm。
+for (const component of ['original', 'new']) {
+  for (const decrease of [0.1, 4.9, 5.0]) {
+    test('reset same-category ' + component + ' reduction ' + decrease + ' mm', () => {
+      const patient = makePatient({
+        newLesions: [newTarget('nl1', 'v2')],
+        visits: [
+          makeVisit({ id: 'v1', date: '2026-02-01', target: 50.1 }),
+          makeVisit({ id: 'v2', date: '2026-03-01', target: 50.1, newTargetMeasurements: {nl1: 20.1} }),
+          makeVisit({ id: 'v3', date: '2026-04-02', target: component === 'original' ? 50.1-decrease : 50.1, newTargetMeasurements: {nl1: component === 'new' ? 20.1-decrease : 20.1} })
+        ]
+      });
+      assert.equal(evaluateIrecistSequence(patient).at(-1).irecist.code, decrease >= 5 ? 'IPR' : 'IUPD');
+    });
+  }
+  test('reset ' + component + ' compares cumulative decrease with iUPD, not prior scan', () => {
+    const visits = [makeVisit({id:'v1',date:'2026-02-01',target:50})];
+    for (const [id,date,drop] of [['v2','2026-03-01',0],['v3','2026-04-02',2.5],['v4','2026-05-03',5]]) {
+      visits.push(makeVisit({id,date,target:component === 'original' ? 50-drop : 50,newTargetMeasurements:{nl1:component === 'new' ? 20-drop : 20}}));
+    }
+    const patient = makePatient({newLesions:[newTarget('nl1','v2')],visits});
+    assert.deepEqual(evaluateIrecistSequence(patient).map(x=>x.irecist.code),['IPR','IUPD','IUPD','IPR']);
+  });
+}
+test('reset does not add 3 mm original and 3 mm new target reductions', () => {
+  const patient=makePatient({newLesions:[newTarget('nl1','v1')],visits:[makeVisit({id:'v1',date:'2026-02-01',target:50,newTargetMeasurements:{nl1:20}}),makeVisit({id:'v2',date:'2026-03-05',target:47,newTargetMeasurements:{nl1:17}})]});
+  assert.equal(evaluateIrecistSequence(patient).at(-1).irecist.code,'IUPD');
+});
+test('new target shrinkage cannot override new original-target PD', () => {
+  const patient=makePatient({newLesions:[newTarget('nl1','v1')],visits:[makeVisit({id:'v1',date:'2026-02-01',target:50,newTargetMeasurements:{nl1:20}}),makeVisit({id:'v2',date:'2026-03-05',target:60,newTargetMeasurements:{nl1:15}})]});
+  assert.equal(evaluateIrecistSequence(patient).at(-1).irecist.code,'ICPD');
+});
+test('original target plus 5 mm does not confirm if only new disease triggered iUPD', () => {
+  const patient=makePatient({newLesions:[newTarget('nl1','v1')],visits:[makeVisit({id:'v1',date:'2026-02-01',target:100,newTargetMeasurements:{nl1:20}}),makeVisit({id:'v2',date:'2026-03-05',target:105,newTargetMeasurements:{nl1:20}})]});
+  assert.equal(evaluateIrecistSequence(patient).at(-1).irecist.code,'IUPD');
+});
+test('new target 5 mm shrinkage resets an unchanged SD category', () => {
+  const patient=makePatient({newLesions:[newTarget('nl1','v1')],visits:[makeVisit({id:'v1',date:'2026-02-01',target:100,newTargetMeasurements:{nl1:20}}),makeVisit({id:'v2',date:'2026-03-05',target:100,newTargetMeasurements:{nl1:15}})]});
+  assert.equal(evaluateIrecistSequence(patient).at(-1).irecist.code,'ISD');
+});
+test('resolved new nodal disease need not shrink 5 mm to reset', () => {
+  const lesion={...newTarget('nl1','v1'),isLymphNode:true};
+  const patient=makePatient({newLesions:[lesion],visits:[makeVisit({id:'v1',date:'2026-02-01',target:50,newTargetMeasurements:{nl1:10}}),makeVisit({id:'v2',date:'2026-03-05',target:50,newTargetMeasurements:{nl1:9.9}})]});
+  assert.equal(evaluateIrecistSequence(patient).at(-1).irecist.code,'IPR');
+});
+
 test('reappearance after prior overall CR produces iUPD instead of NE', () => {
   const patient = makePatient({
     baselineMm: 10,

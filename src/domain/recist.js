@@ -145,7 +145,7 @@ export function evaluateOverallResponse({ target, nonTarget, hasDefiniteNewLesio
   if (hadPriorOverallCR && target.reappearedAfterTargetCR) {
     return {
       code: 'PD',
-      reason: '此前曾达到总体完全缓解，当前至少一个靶病灶重新出现或靶淋巴结重新达到可测量标准（≥10 mm），构成疾病进展。'
+      reason: '此前曾达到总体完全缓解，当前至少一个靶病灶重新出现或靶淋巴结短径重新达到病理性阈值（≥10 mm），构成疾病进展。'
     };
   }
 

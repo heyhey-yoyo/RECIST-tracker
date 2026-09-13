@@ -98,4 +98,4 @@ AuditEntry
 
 nonTargetStatuses 与 newNonTargetStatuses 仅保存已选择的有效枚举；未选择的键直接省略，不能写入空字符串。载入时兼容迁移旧存档中的空字符串，避免整份患者库因未完成的非靶录入被拒绝。靶测量缺失按各测量字段的 null 语义处理，不把缺失数据解释成 0。
 
-界面保存是持久化与内存状态一致的操作：存储配额/权限失败时保留旧持久化数据，并回滚未提交的内存修改。npm run release:check 包含实际浏览器“界面录入→保存→刷新恢复”、旧空值迁移和存储失败回滚检查；浏览器使用隔离配置，详见 [AGENTS.md](../AGENTS.md)。
+界面保存是持久化与内存状态一致的操作：存储配额/权限失败时保留旧持久化数据，并回滚未提交的内存修改。npm run release:check 包含实际浏览器“界面录入→保存→刷新恢复”、旧空值迁移和存储失败回滚检查；此完整检查需要本机 Chrome/Chromium/Edge，支持 `BROWSER_EXECUTABLE` 指定可执行文件；浏览器使用隔离配置，详见 [AGENTS.md](../AGENTS.md)。

@@ -199,8 +199,9 @@ const RESPONSE_RANK = Object.freeze({
 
 /**
  * iUPD 未被确认时，允许按基线重新赋予 iSD/iPR/iCR。
- * 新病灶不必完全消退，只要没有进一步增大或新增；但若原病灶反应与 iUPD 时间点完全相同，
- * 则继续保留 iUPD，避免把“未变化的既往 PR + 稳定新病灶”错误重置为 iPR。
+ * 先排除进展与无法评价；新病灶全部消退或原病灶反应等级改善可进入各自重置分支。
+ * 新病灶仍存在且原病灶等级相同时，原靶或新靶总和必须较 iUPD 锚点再减至少 5 mm。
+ * 依据官方 FAQ Scenario F 的 no-change 澄清：https://recist.eortc.org/irecist/
  */
 function canResetFromIupd({ baseOverall, metrics, pending, recistResult }) {
   if (baseOverall.code === 'PD' || baseOverall.code === 'NE') return false;
@@ -220,8 +221,12 @@ function canResetFromIupd({ baseOverall, metrics, pending, recistResult }) {
   const targetImproved =
     Number.isFinite(recistResult.target.currentSum) &&
     Number.isFinite(pending.targetSum) &&
-    toTenths(recistResult.target.currentSum) < toTenths(pending.targetSum);
-  return currentRank === anchorRank && targetImproved;
+    toTenths(pending.targetSum) - toTenths(recistResult.target.currentSum) >= 50;
+  const newTargetImproved =
+    Number.isFinite(metrics.newTargetSum) &&
+    Number.isFinite(pending.newTargetSum) &&
+    toTenths(pending.newTargetSum) - toTenths(metrics.newTargetSum) >= 50;
+  return currentRank === anchorRank && (targetImproved || newTargetImproved);
 }
 
 export function evaluateIrecistSequence(patient) {

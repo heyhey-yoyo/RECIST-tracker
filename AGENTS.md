@@ -9,7 +9,7 @@ RECIST Tracker 是一个纯前端 SPA（单页应用），用于 RECIST 1.1 和 
 - HTML / CSS / 原生 JavaScript（ES Modules），无打包器、无压缩器、零 npm 依赖。
 - 构建脚本 `scripts/build.mjs` 使用 `node:fs/promises` 做简单文件复制。
 - 部署形态：纯静态 Pages 或 Workers 静态资产（`wrangler.jsonc` 配置 `assets`，无 D1）。
-- 需要 Node.js ≥ 20。
+- 构建与测试需要 Node.js ≥ 20；`npm run preview` 还需要 Python 3，且 `python3` 命令可用。
 
 ## 项目结构
 
@@ -24,7 +24,7 @@ scripts/build.mjs       零依赖静态构建脚本（复制 index.html + _heade
 src/
   app.js                全部 UI：路由（hash-based）、表单、模态框、事件处理、渲染
   styles.css            单文件 CSS，无预处理器或框架
-  storage.js            localStorage 读写、审计日志、JSON 备份/恢复、容量监控、写入异常回滚
+  storage.js            localStorage 读写、审计日志、JSON 备份/恢复、容量监控、抛出写入异常供 app.persist 回滚
   demo.js               演示数据工厂（胃癌免疫治疗示例）
   domain/
     model.js            数据模型：常量、状态枚举（NON_TARGET_STATUSES / NEW_NON_TARGET_STATUSES，全项目唯一来源，由 LABELS 键派生）、工厂函数（createPatient、createVisit）、clone、organGroup（RECIST 器官计数归组）
@@ -67,7 +67,7 @@ npm run preview    # 通过 Python http.server 在 http://localhost:4173 预览 
 ## 测试
 
 - Node 内置测试运行器（`node:test` + `node:assert/strict`），测试直接导入领域逻辑。
-- 覆盖 RECIST 1.1 矩阵、iRECIST 状态机、测量解析、schema 校验、存储容量与 XSS、数据完整性（时间穿越防护与 schema 往返），共 38 项。
+- 覆盖 RECIST 1.1 矩阵、iRECIST 状态机、测量解析、schema 校验、存储容量与 XSS、数据完整性（时间穿越防护与 schema 往返），详见各测试文件。
 - 修改 RECIST/iRECIST 规则时，务必添加对应的测试用例。
 
 发布检查：
@@ -76,7 +76,20 @@ npm run preview    # 通过 Python http.server 在 http://localhost:4173 预览 
 npm run release:check
 ```
 
+`test` / `build` / `check` 仅需 Node.js；`release:check` 还调用 `test:browser`，需要已安装的 Chrome/Chromium/Edge。脚本检查 Windows Chrome/Edge、macOS Chrome 常见路径及 PATH 中的 chromium/chromium-browser/google-chrome；其他位置通过环境变量指定。无浏览器时检查明确失败，不会跳过浏览器验证。运行结束清理隔离用户目录与临时服务。
+
+```powershell
+$env:BROWSER_EXECUTABLE = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+npm run release:check
+```
+
+```bash
+BROWSER_EXECUTABLE=/usr/bin/chromium npm run release:check
+```
+
 ## 代码组织与风格约定
+
+对外版本以 GitHub Release 为准；应用版本来自 `package.json`，发布时与 Release tag 同步。 数据 schema 版本独立维护，不随补丁发布递增。
 
 ### 状态管理
 
@@ -93,7 +106,7 @@ state = {
 
 - **持久化**：`loadState()` / `saveState()` 读写 `localStorage`，键为 `recist-tracker-state-v1`。
 - **加载时校验**：`loadState()` 调用 `validateAndNormalizeState()`（`schema.js`）递归白名单校验，拒绝恶意/畸形数据，返回空状态而不崩溃。
-- **保存时保护**：`saveState()` 捕获配额异常并回滚内存状态到上次成功保存的快照。
+- **保存时保护**：`saveState()` 在写入失败时抛出 `StoragePersistenceError`；`app.js` 的 `persist()` 维护 `lastPersistedState` 并回滚内存到上次成功快照。直接调用 storage.saveState 不会替调用方回滚内存。
 - **容量监控**：序列化数据 ≥4 MiB 时 UI 显示警告；导出页面显示当前数据大小。
 - **审计**：每次变更调用 `appendAudit()`，记录 `{ action, entityType, entityId, patientId, summary, before, after }`。最多 2000 条。
 
@@ -136,9 +149,9 @@ RECIST 1.1（`recist.js`）：
 
 iRECIST（`irecist.js`）：
 
-- `evaluateIrecistSequence(patient)` — 在 `evaluateRecistSequence()` 结果之上运行的状态机
-- 跟踪 `pending` iUPD 锚点；满足进一步进展标准（5 mm 增长、非靶病灶进一步增大、额外新病灶）时确认 iCPD
-- 未确认且病灶改善时将 iUPD 重置为 iCR/iPR/iSD
+- `evaluateIrecistSequence(patient)` — 直接复用单访视 `evaluateVisitRecist()`，独立维护 `committedVisits`、总体 CR 历史与 `pending` 锚点的状态机；不直接消费 RECIST 全序列，提前扫描和 NE 不进入后续参考
+- 跟踪 `pending` iUPD 锚点；满足进一步进展标准（已触发类别总和进一步增长 ≥5 mm、对应非靶进一步增大、额外新病灶或另一类别首次达到进展）时确认 iCPD
+- 未确认且病灶改善时将 iUPD 重置为 iCR/iPR/iSD。`canResetFromIupd` 的新发病灶仍存在、原病灶等级不变分支要求原靶或新靶总和较 `pending` 锚点至少缩小 5 mm，两个总和独立判断并用 `toTenths` 比较。原靶/新靶 4.9 与 5.0 mm、锚点 vs 最近扫描、类别进展优先和新病灶消退由 `tests/irecist.test.js` 回归；规范来源及完整分支见 [RULES.md](./docs/RULES.md)。
 - 对确认窗口违规（不在 28–56 天内）和临床不稳定性发出警告
 
 ### 验证约束（`validation.js`）
@@ -147,8 +160,8 @@ iRECIST（`irecist.js`）：
 - 新发靶病灶最多 5 个，每个器官最多 2 个
 - 淋巴结：基线短轴 ≥ 15 mm 为可测量（警告）
 - 非淋巴结：基线最长径 ≥ 10 mm 为可测量（警告）
-- 访视日期不得早于基线日期
-- 不允许重复访视日期
+- 访视早于基线或日期重复属于 `validation.js` 的数据质量警告，允许保存和导入，不是 schema 阻断条件
+- 日期类型/格式、ID、枚举及引用完整性由 `schema.js` 校验；不得把软性质量警告写成禁止保存
 
 ### 通用约定
 
