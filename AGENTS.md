@@ -196,6 +196,8 @@ nonTargetStatuses 与 newNonTargetStatuses 省略未选择的键，并兼容迁�
 - Cloudflare Pages：`npm run build` 后输出目录 `dist`；或 `npx wrangler pages deploy dist --project-name recist-tracker`。
 - Cloudflare Workers Static Assets：`wrangler.jsonc` 配置 assets，`not_found_handling` 设为 `single-page-application`；`npx wrangler deploy`。
 
+平台或域名缓存规则可能覆盖项目请求的 `no-cache` 响应头；不能仅凭 `_headers` 宣称线上全部资源会重新验证。资源标识仍须覆盖完整依赖闭包并随内容更新，实际缓存响应头在上线记录中逐资源保留。
+
 ## 安全与数据注意事项
 
 - 导入数据经过 `schema.js` 递归白名单校验：ID 必须字母开头、仅含字母数字下划线连字符；状态值必须在已知枚举内；病灶引用完整性校验；未知字段静默丢弃。
