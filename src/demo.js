@@ -1,4 +1,4 @@
-import { createInitialState, nowIso } from './domain/model.js';
+import { createInitialState, nowIso } from './domain/model.js?v=19ddc73b8e33';
 
 export function createDemoState() {
   const state = createInitialState();

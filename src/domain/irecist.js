@@ -1,6 +1,6 @@
-import { evaluateOverallResponse, evaluateVisitRecist, sortVisits } from './recist.js';
-import { daysBetween } from '../utils/format.js';
-import { parseMeasurement, allMeasured, sumMeasured, toTenths } from '../utils/measurement.js';
+import { evaluateOverallResponse, evaluateVisitRecist, sortVisits } from './recist.js?v=19ddc73b8e33';
+import { daysBetween } from '../utils/format.js?v=19ddc73b8e33';
+import { parseMeasurement, allMeasured, sumMeasured, toTenths } from '../utils/measurement.js?v=19ddc73b8e33';
 
 function visitIndexMap(visits) {
   return new Map(visits.map((visit, index) => [visit.id, index]));

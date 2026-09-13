@@ -3,8 +3,8 @@ import {
   createInitialState,
   NON_TARGET_STATUSES,
   NEW_NON_TARGET_STATUSES
-} from './model.js';
-import { parseMeasurement } from '../utils/measurement.js';
+} from './model.js?v=19ddc73b8e33';
+import { parseMeasurement } from '../utils/measurement.js?v=19ddc73b8e33';
 
 const ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,127}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

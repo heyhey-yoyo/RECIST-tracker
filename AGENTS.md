@@ -191,6 +191,8 @@ nonTargetStatuses 与 newNonTargetStatuses 省略未选择的键，并兼容迁�
 
 ## 部署
 
+缓存升级约定：`_headers` 对所有资源设置 `Cache-Control: no-cache`。HTML 入口、样式、各层本地模块引用及 Worker 地址使用一致的 `v` 查询标识，不能只更新入口脚本。更新资源时刷新整组标识，并通过实际导入图核对每条本地依赖及 Worker 的 URL；标识独立于模型、存储和分享格式版本。发布后需以实际响应头和递归资源摘要核验，避免已有缓存混用。
+
 - Cloudflare Pages：`npm run build` 后输出目录 `dist`；或 `npx wrangler pages deploy dist --project-name recist-tracker`。
 - Cloudflare Workers Static Assets：`wrangler.jsonc` 配置 assets，`not_found_handling` 设为 `single-page-application`；`npx wrangler deploy`。
 

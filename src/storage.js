@@ -1,7 +1,7 @@
-import { createInitialState, clone, createId, nowIso } from './domain/model.js';
-import { validateAndNormalizeState } from './domain/schema.js';
-import { evaluateRecistSequence } from './domain/recist.js';
-import { evaluateIrecistSequence } from './domain/irecist.js';
+import { createInitialState, clone, createId, nowIso } from './domain/model.js?v=19ddc73b8e33';
+import { validateAndNormalizeState } from './domain/schema.js?v=19ddc73b8e33';
+import { evaluateRecistSequence } from './domain/recist.js?v=19ddc73b8e33';
+import { evaluateIrecistSequence } from './domain/irecist.js?v=19ddc73b8e33';
 
 const STORAGE_KEY = 'recist-tracker-state-v1';
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;

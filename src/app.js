@@ -8,7 +8,7 @@ import {
   nowIso,
   clone,
   organGroup
-} from './domain/model.js';
+} from './domain/model.js?v=19ddc73b8e33';
 import {
   evaluateRecistSequence,
   bestRecistTimepoint,
@@ -16,9 +16,9 @@ import {
   sortVisits,
   newLesionsTrackableAtVisit,
   pruneNewLesionTimeTravelKeys
-} from './domain/recist.js';
-import { evaluateIrecistSequence, bestIrecistTimepoint } from './domain/irecist.js';
-import { validatePatient } from './domain/validation.js';
+} from './domain/recist.js?v=19ddc73b8e33';
+import { evaluateIrecistSequence, bestIrecistTimepoint } from './domain/irecist.js?v=19ddc73b8e33';
+import { validatePatient } from './domain/validation.js?v=19ddc73b8e33';
 import {
   loadState,
   saveState,
@@ -28,8 +28,8 @@ import {
   importBackup,
   getLastLoadWarning,
   serializedStateSize
-} from './storage.js';
-import { createDemoState } from './demo.js';
+} from './storage.js?v=19ddc73b8e33';
+import { createDemoState } from './demo.js?v=19ddc73b8e33';
 import {
   escapeHtml,
   formatDate,
@@ -37,7 +37,7 @@ import {
   formatNumber,
   formatPercent,
   responseClass
-} from './utils/format.js';
+} from './utils/format.js?v=19ddc73b8e33';
 
 const app = document.querySelector('#app');
 let state = loadState();
