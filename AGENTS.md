@@ -13,53 +13,41 @@ RECIST Tracker 是一个纯前端 SPA（单页应用），用于 RECIST 1.1 和 
 
 ## 项目结构
 
-```text
-index.html              静态 HTML 入口（位于仓库根目录）
-_headers                Cloudflare Pages 响应头（位于仓库根目录）
-assets/
-  project-mark.svg      项目专属标志（浏览器标题栏 favicon）
-scripts/browser-check.mjs 零依赖真实浏览器回归入口（临时本地服务与 Chromium 调试管道）
-scripts/browser-scenarios.mjs 界面保存、重载、配额回滚与旧数据恢复场景
-scripts/build.mjs       零依赖静态构建脚本（复制 index.html + _headers + assets/ + src/ → dist/）
-src/
-  app.js                全部 UI：路由（hash-based）、表单、模态框、事件处理、渲染
-  styles.css            单文件 CSS，无预处理器或框架
-  storage.js            localStorage 读写、审计日志、JSON 备份/恢复、容量监控、抛出写入异常供 app.persist 回滚
-  demo.js               演示数据工厂（胃癌免疫治疗示例）
-  domain/
-    model.js            数据模型：常量、状态枚举（NON_TARGET_STATUSES / NEW_NON_TARGET_STATUSES，全项目唯一来源，由 LABELS 键派生）、工厂函数（createPatient、createVisit）、clone、organGroup（RECIST 器官计数归组）
-    recist.js           RECIST 1.1 规则：靶病灶评估、非靶病灶评估、总体疗效、序列评估、最佳时间点；evaluateVisitRecist 为单访视共享评估函数；newLesionsTrackableAtVisit / pruneNewLesionTimeTravelKeys 防止时间穿越测量写入
-    irecist.js          iRECIST 状态机：iUPD 检测、确认逻辑、重置规则、提前扫描隔离（＜28 天）、NE 时间点隔离
-    validation.js       数据质量检查（病灶数量、器官组限制、测量有效性、新发靶病灶可测量性）
-    schema.js           导入/加载数据递归白名单校验：ID 格式、枚举、引用完整性、XSS 防护、类型约束
-  utils/
-    format.js           HTML 转义、日期/数字/百分比格式化（zh-CN locale）、daysBetween、responseClass
-    measurement.js      严格测量值解析、toTenths() 将毫米值转为 0.1 mm 整数
-test-utils/
-  fixtures.js           测试夹具工厂函数（makePatient、makeVisit、makeState）
-tests/
-  recist.test.js        RECIST 1.1 矩阵、靶/非靶/总体疗效边界
-  irecist.test.js       iRECIST 状态机、提前扫描、窗口、重置
-  measurement.test.js   严格解析、类型拒绝、0 vs 空值
-  schema.test.js        schema 校验、引用、XSS、重复 ID
-  storage.test.js       存储容量、配额异常、损坏数据、XSS 导入
-  validation.test.js    数据验证检查（含器官归组与新发靶病灶可测量性）
-  data-integrity.test.js 时间穿越测量防护与 schema 往返
-docs/
-  DATA_MODEL.md         完整数据结构参考
-  RULES.md              RECIST 1.1 / iRECIST 规则边界与边缘情况
-wrangler.jsonc          Workers 静态资产配置（assets + single-page-application）
-package.json            npm 脚本与版本常量
-LICENSE                 MIT 许可证
-.nvmrc                  Node 版本约定（20）
-dist/                   构建产物（由构建脚本生成，仅供参考）
-```
+| 文件 | 作用 |
+| --- | --- |
+| `index.html` | 静态 HTML 入口（位于仓库根目录） |
+| `_headers` | Cloudflare Pages 响应头（位于仓库根目录） |
+| `assets/project-mark.svg` | 项目专属标志（浏览器标题栏 favicon） |
+| `scripts/build.mjs` | 零依赖静态构建脚本（复制 index.html + _headers + assets/ + src/ → dist/） |
+| `scripts/browser-check.mjs` | 零依赖真实浏览器回归入口（临时本地服务与 Chromium 调试管道） |
+| `scripts/browser-scenarios.mjs` | 界面保存、重载、配额回滚与旧数据恢复场景 |
+| `src/app.js` | 全部 UI：路由（hash-based）、表单、模态框、事件处理、渲染 |
+| `src/styles.css` | 单文件 CSS，无预处理器或框架 |
+| `src/storage.js` | localStorage 读写、审计日志、JSON 备份/恢复、容量监控、抛出写入异常供 app.persist 回滚 |
+| `src/demo.js` | 演示数据工厂（胃癌免疫治疗示例） |
+| `src/domain/model.js` | 数据模型：常量、状态枚举（NON_TARGET_STATUSES / NEW_NON_TARGET_STATUSES，全项目唯一来源，由 LABELS 键派生）、工厂函数（createPatient、createVisit）、clone、organGroup（RECIST 器官计数归组） |
+| `src/domain/recist.js` | RECIST 1.1 规则：靶病灶评估、非靶病灶评估、总体疗效、序列评估、最佳时间点；evaluateVisitRecist 为单访视共享评估函数；newLesionsTrackableAtVisit / pruneNewLesionTimeTravelKeys 防止时间穿越测量写入 |
+| `src/domain/irecist.js` | iRECIST 状态机：iUPD 检测、确认逻辑、重置规则、提前扫描隔离（＜28 天）、NE 时间点隔离 |
+| `src/domain/validation.js` | 数据质量检查（病灶数量、器官组限制、测量有效性、新发靶病灶可测量性） |
+| `src/domain/schema.js` | 导入/加载数据递归白名单校验：ID 格式、枚举、引用完整性、XSS 防护、类型约束 |
+| `src/utils/format.js` | HTML 转义、日期/数字/百分比格式化（zh-CN locale）、daysBetween、responseClass |
+| `src/utils/measurement.js` | 严格测量值解析、toTenths() 将毫米值转为 0.1 mm 整数 |
+| `test-utils/fixtures.js` | 测试夹具工厂函数（makePatient、makeVisit、makeState） |
+| `tests/`（7 个 `*.test.js`） | recist（RECIST 1.1 矩阵、靶/非靶/总体疗效边界）、irecist（状态机、提前扫描、窗口、重置）、measurement（严格解析、类型拒绝、0 vs 空值）、schema（校验、引用、XSS、重复 ID）、storage（容量、配额异常、损坏数据、XSS 导入）、validation（数据验证检查，含器官归组与新发靶病灶可测量性）、data-integrity（时间穿越测量防护与 schema 往返） |
+| `docs/DATA_MODEL.md` | 完整数据结构参考 |
+| `docs/RULES.md` | RECIST 1.1 / iRECIST 规则边界与边缘情况 |
+| `wrangler.jsonc` | Workers 静态资产配置（assets + single-page-application） |
+| `package.json` | npm 脚本与版本常量 |
+| `LICENSE` | MIT 许可证 |
+| `.nvmrc` | Node 版本约定（20） |
+| `.gitignore` | Git 忽略规则 |
+| `README.md` / `AGENTS.md` | 用户向项目说明与 AI 代理维护说明 |
 
 ## 运行与构建
 
 ```bash
 npm run test       # Node.js 内置测试运行器，测试文件在 tests/
-npm run build      # 将 index.html + _headers + src/ 复制到 dist/（脚本：scripts/build.mjs）
+npm run build      # 将 index.html + _headers + assets/ + src/ 复制到 dist/（脚本：scripts/build.mjs）
 npm run check      # test + build
 npm run preview    # 通过 Python http.server 在 http://localhost:4173 预览 dist/
 ```
@@ -89,11 +77,11 @@ BROWSER_EXECUTABLE=/usr/bin/chromium npm run release:check
 
 ## 代码组织与风格约定
 
-对外版本以 GitHub Release 为准；应用版本来自 `package.json`，发布时与 Release tag 同步。 数据 schema 版本独立维护，不随补丁发布递增。
+对外版本以 GitHub Release 为准；应用版本来自 `package.json`，发布时与 Release tag 同步。数据 schema 版本独立维护，不随补丁发布递增。
 
 ### 状态管理
 
-全部应用状态存储在单个 `state` 对象（`src/app.js:43`）：
+全部应用状态存储在 `src/app.js` 顶部的单个 `state` 对象：
 
 ```js
 state = {
@@ -191,7 +179,7 @@ nonTargetStatuses 与 newNonTargetStatuses 省略未选择的键，并兼容迁�
 
 ## 部署
 
-缓存升级约定：`_headers` 对所有资源设置 `Cache-Control: no-cache`。HTML 入口、样式、各层本地模块引用及 Worker 地址使用一致的 `v` 查询标识，不能只更新入口脚本。更新资源时刷新整组标识，并通过实际导入图核对每条本地依赖及 Worker 的 URL；标识独立于模型、存储和分享格式版本。发布后需以实际响应头和递归资源摘要核验，避免已有缓存混用。
+缓存升级约定：`_headers` 对所有资源设置 `Cache-Control: no-cache`。HTML 入口、样式与各层本地模块引用使用一致的 `v` 查询标识，不能只更新入口脚本。更新资源时刷新整组标识，并通过实际导入图核对每条本地依赖的 URL；标识独立于模型、存储和分享格式版本。发布后需以实际响应头和递归资源摘要核验，避免已有缓存混用。
 
 - Cloudflare Pages：`npm run build` 后输出目录 `dist`；或 `npx wrangler pages deploy dist --project-name recist-tracker`。
 - Cloudflare Workers Static Assets：`wrangler.jsonc` 配置 assets，`not_found_handling` 设为 `single-page-application`；`npx wrangler deploy`。
