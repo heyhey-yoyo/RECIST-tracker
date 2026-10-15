@@ -47,8 +47,6 @@ iUPD 后不足 28 天的提前检查会提示并保留待确认状态，不参�
 
 ## 本地运行
 
-对外版本以 GitHub Release 为准；应用版本来自 `package.json`，发布时与 Release tag 同步。数据 schema 版本独立维护，不随补丁发布递增。
-
 项目没有第三方运行时依赖。构建与测试需要 Node.js 20 或更高版本；下方预览命令还需要 Python 3，且 `python3` 命令可用。
 
 ```bash
