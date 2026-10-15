@@ -45,8 +45,6 @@ iUPD 后不足 28 天的提前检查会提示并保留待确认状态，不参�
 - 应定期使用「数据备份」页面导出 JSON。
 - 该架构没有用户登录、权限控制或多中心协作能力。
 
-如需多用户协作，可在后续版本中增加 Cloudflare Access、Workers API 和 D1 数据库。
-
 ## 本地运行
 
 对外版本以 GitHub Release 为准；应用版本来自 `package.json`，发布时与 Release tag 同步。数据 schema 版本独立维护，不随补丁发布递增。
@@ -64,7 +62,7 @@ npm run preview
 http://localhost:4173
 ```
 
-`npm run check` 仅需 Node.js，会运行规则单元测试并生成 `dist/`。完整发布验证 `npm run release:check` 还运行真实浏览器场景，需要本机 Chrome、Chromium 或 Edge；常见路径自动发现，其他安装路径设置 `BROWSER_EXECUTABLE` 为浏览器可执行文件路径，配置示例见 [AGENTS.md](./AGENTS.md)。
+`npm run check` 仅需 Node.js，会运行规则单元测试并生成 `dist/`。完整发布验证与浏览器环境配置见 [AGENTS.md](./AGENTS.md)。
 
 ## 部署
 
@@ -88,7 +86,7 @@ Node.js version: 20 或更高
 
 每次推送后 Cloudflare Pages 会自动构建和部署。
 
-**直接上传**
+**直接上传（备用方式）**
 
 ```bash
 npm run build
